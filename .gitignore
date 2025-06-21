@@ -1,15 +1,2 @@
-# Jupyter notebook checkpoints
-.ipynb_checkpoints/
-
-# Python cache directories
-__pycache__/
-*.pyc
-
-# Vector DB directory
-vector_db/
-
-# Virtual environments
-backend/.venv/
-
-# Ignore .env file in backend
-backend/.env
+backend/env
+Client/Interview/node_modules/  
