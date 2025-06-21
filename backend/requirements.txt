@@ -1,8 +1,0 @@
-pdfplumber
-pytesseract
-pdf2image
-sentence-transformers
-chromadb
-langchain
-nltk
-pinecone
