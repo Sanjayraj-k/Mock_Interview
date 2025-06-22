@@ -1,11 +1,10 @@
 import React, { useState } from "react";
 import axios from "axios";
 import { useNavigate } from "react-router-dom";
-import { User, Mail, Lock, UserCheck, Hash, Eye, EyeOff } from "lucide-react";
+import { Mail, Lock, Hash, UserCheck, Eye, EyeOff } from "lucide-react";
 
 function StudentLogin() {
   const [form, setForm] = useState({
-    name: "",
     email: "",
     password: "",
     role: "",
@@ -30,12 +29,16 @@ function StudentLogin() {
     setError("");
 
     try {
-      const res = await axios.post("http://localhost:5000/api/candicate/login", form);
+      const res = await axios.post("http://localhost:5000/api/candidate/login", {
+        email: form.email,
+        password: form.password,
+        rollNo: form.rollNo,
+        role: form.role
+      });
       
       // Store user details in localStorage
-      localStorage.setItem("candicate", JSON.stringify({
+      localStorage.setItem("candidate", JSON.stringify({
         id: res.data.student.id,
-        name: res.data.student.name,
         email: res.data.student.email,
         role: res.data.student.role,
         rollNo: res.data.student.rollNo,
@@ -43,9 +46,9 @@ function StudentLogin() {
         token: res.data.token
       }));
       
-      // Navigate to student dashboard
-      navigate("/candicate/dashboard");
-      
+      // Navigate to user-select page after successful login
+      navigate("/user-select");
+      console.log("Login successful:", res.data);
     } catch (err) {
       setError(err.response?.data?.message || "Login failed. Please check your credentials.");
     } finally {
@@ -58,9 +61,11 @@ function StudentLogin() {
       <div className="bg-white p-8 rounded-2xl shadow-xl w-full max-w-md">
         <div className="text-center mb-8">
           <div className="w-16 h-16 bg-gradient-to-r from-blue-500 to-indigo-600 rounded-full flex items-center justify-center mx-auto mb-4">
-            <User className="w-8 h-8 text-white" />
+            <svg className="w-8 h-8 text-white" fill="currentColor" viewBox="0 0 24 24">
+              <path d="M12 12c2.21 0 4-1.79 4-4s-1.79-4-4-4-4 1.79-4 4 1.79 4 4 4zm0 2c-2.67 0-8 1.34-8 4v2h16v-2c0-2.66-5.33-4-8-4z"/>
+            </svg>
           </div>
-          <h2 className="text-3xl font-bold text-gray-800">Candicate Login</h2>
+          <h2 className="text-3xl font-bold text-gray-800">Candidate Login</h2>
           <p className="text-gray-600 mt-2">Enter your credentials to access the portal</p>
         </div>
 
@@ -71,18 +76,6 @@ function StudentLogin() {
         )}
 
         <form onSubmit={handleLogin} className="space-y-4">
-          <div className="relative">
-            <User className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-5 h-5" />
-            <input
-              className="w-full pl-10 pr-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-              name="name"
-              placeholder="Full Name"
-              onChange={handleChange}
-              value={form.name}
-              required
-            />
-          </div>
-
           <div className="relative">
             <Mail className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-5 h-5" />
             <input

@@ -1,18 +1,21 @@
 import React, { useContext } from 'react';
 import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
-import { AuthContext, AuthProvider } from './context/AuthContext.jsx';
+import { AuthContext, AuthProvider } from './context/AuthContext';
+import Login from './Dashboard/login';
+import Signup from './Dashboard/Signup';
+import HRDashboard from './Dashboard/Hr';
+import LandingPage from './Auth/LandingPage';
+import StudentLogin from './Auth/login'; // Renamed from Logins for clarity
+import UserSelect from './pages/UserSelect.jsx';
+import FaceDetection from './pages/FaceDetection.jsx';
+import Protected from './pages/Protected.jsx'; // Added assuming it exists
+import GoogleFormWithWebcam from './pages/GoogleForm.jsx';
+import WebCam from './pages/webCam.jsx'; // Adjusted extension for consistency
 
-// Import all your pages
-import LandingPage from './Auth/Landingpage'; // The new landing page
-import Login from './Dashboard/login'; // HR Login
-import Signup from './Dashboard/signup'; // HR Signup
-import HRDashboard from './Dashboard/Hr'; // HR Dashboard
-import Logins from './Auth/login'; // Candidate Login (Assuming this is the correct component)
-
-// This protected route is essential and correctly implemented.
+// Protected Route for HR
 const ProtectedHRRoute = ({ children }) => {
   const { isHRAuthenticated } = useContext(AuthContext);
-  // While loading or on initial check, you might want a loading spinner here
+  console.log('ProtectedHRRoute: isHRAuthenticated =', isHRAuthenticated); // Debug
   return isHRAuthenticated ? children : <Navigate to="/hr/login" replace />;
 };
 
@@ -22,10 +25,10 @@ function App() {
       <Router>
         <div className="App">
           <Routes>
-            {/* 1. Landing Page Route - This is the main entry point */}
+            {/* 1. Landing Page Route - Main entry point */}
             <Route path="/" element={<LandingPage />} />
 
-            {/* 2. HR Routes - The flow starts from the landing page link */}
+            {/* 2. HR Routes */}
             <Route path="/hr">
               <Route index element={<Navigate to="/hr/login" replace />} />
               <Route path="login" element={<Login />} />
@@ -40,14 +43,20 @@ function App() {
               />
             </Route>
 
-            {/* 3. Candidate Routes */}
+            {/* 3. Candidate Route */}
             <Route path="/candidate">
               <Route index element={<Navigate to="/candidate/login" replace />} />
-              <Route path="login" element={<Logins />} />
-              {/* Add candidate signup and dashboard routes here later */}
+              <Route path="login" element={<StudentLogin />} />
             </Route>
 
-            {/* 4. Fallback Route - Redirects any unknown URL to the landing page */}
+            {/* 4. Candidate Pages (No Protection) */}
+            <Route path="/user-select" element={<UserSelect />} />
+            <Route path="/face" element={<FaceDetection />} />
+            <Route path="/protected" element={<Protected />} />
+            <Route path="/googleform" element={<GoogleFormWithWebcam />} />
+            <Route path="/web" element={<WebCam />} />
+
+            {/* 5. Fallback Route - Redirects any unknown URL to the landing page */}
             <Route path="*" element={<Navigate to="/" replace />} />
           </Routes>
         </div>
