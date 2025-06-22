@@ -18,7 +18,7 @@ export default function Signup() {
       });
       const data = await response.json();
       if (!response.ok) throw new Error(data.error || 'Failed to signup');
-      navigate('/login');
+      navigate('/hr/login');
     } catch (err) {
       setError(err.message);
     }
@@ -71,7 +71,7 @@ export default function Signup() {
         
         <p className="text-center text-sm text-gray-600 mt-4">
           Already have an account?{' '}
-          <Link to="/login" className="text-blue-600 hover:underline">
+          <Link to="/hr/login" className="text-blue-600 hover:underline">
             Sign In
           </Link>
         </p>

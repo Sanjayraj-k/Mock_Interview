@@ -1,11 +1,13 @@
-import React, { useState } from 'react';
+import React, { useState, useContext } from 'react';
 import { User } from 'lucide-react';
 import { Link, useNavigate } from 'react-router-dom';
+import { AuthContext } from '../context/AuthContext' // Adjust path if needed
 
 export default function Login() {
   const [loginForm, setLoginForm] = useState({ email: '', password: '' });
   const [error, setError] = useState('');
   const navigate = useNavigate();
+  const { handleHRLogin } = useContext(AuthContext);
 
   const handleLogin = async (e) => {
     e.preventDefault();
@@ -14,18 +16,17 @@ export default function Login() {
       const response = await fetch('http://localhost:5000/api/login', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(loginForm)
+        body: JSON.stringify(loginForm),
       });
       const data = await response.json();
       if (!response.ok) throw new Error(data.error || 'Failed to login');
-      localStorage.setItem('email', loginForm.email);
-      localStorage.setItem('isLoggedIn', 'true');
-      navigate('/dashboard');
+      handleHRLogin({ email: loginForm.email, ...data }); // Update auth state
+      navigate('/hr/dashboard');
+      console.log() // Navigate to HR dashboard
     } catch (err) {
-      setError(err.message);
+      setError(err.message || 'Network error. Please try again.');
     }
   };
-
   return (
     <div className="min-h-screen bg-gradient-to-br from-blue-600 via-purple-600 to-blue-800 flex items-center justify-center p-4">
       <div className="bg-white rounded-2xl shadow-2xl p-8 w-full max-w-md">
@@ -36,7 +37,7 @@ export default function Login() {
           <h1 className="text-2xl font-bold text-gray-900 mb-2">HR Login Portal</h1>
           <p className="text-gray-600">AI Mock Interview Platform</p>
         </div>
-        
+
         <form onSubmit={handleLogin} className="space-y-6">
           {error && <p className="text-red-600 text-sm">{error}</p>}
           <div>
@@ -50,7 +51,7 @@ export default function Login() {
               required
             />
           </div>
-          
+
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-2">Password</label>
             <input
@@ -62,7 +63,7 @@ export default function Login() {
               required
             />
           </div>
-          
+
           <button
             type="submit"
             className="w-full bg-gradient-to-r from-blue-500 to-purple-600 text-white py-3 px-4 rounded-lg font-medium hover:from-blue-600 hover:to-purple-700 transition-all duration-200 shadow-lg"
@@ -70,10 +71,10 @@ export default function Login() {
             Sign In to Dashboard
           </button>
         </form>
-        
+
         <p className="text-center text-sm text-gray-600 mt-4">
           Don't have an account?{' '}
-          <Link to="/signup" className="text-blue-600 hover:underline">
+          <Link to="/hr/signup" className="text-blue-600 hover:underline">
             Sign Up
           </Link>
         </p>

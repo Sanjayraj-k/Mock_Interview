@@ -1,30 +1,34 @@
+# app.py
+
 from flask import Flask, jsonify, request
 from flask_cors import CORS
 from pymongo import MongoClient
+from bson import ObjectId
 from datetime import datetime
-import uuid
 import bcrypt
 import re
 
 app = Flask(__name__)
-CORS(app, resources={r"/api/*": {"origins": "http://localhost:5173"}})  # Restrict CORS to frontend origin
+# This allows your React app at localhost:5173 to communicate with your Flask server
+CORS(app, resources={r"/api/*": {"origins": "http://localhost:5173"}})
 
-# MongoDB connection
-mongo_uri = "mongodb://localhost:27017/hrDashboard"  # Local MongoDB
-# mongo_uri = "mongodb+srv://<username>:<password>@cluster0.mongodb.net/hrDashboard?retryWrites=true&w=majority"  # MongoDB Atlas
+# --- Database Connection ---
+# Make sure your MongoDB server is running
+mongo_uri = "mongodb://localhost:27017/"
 client = MongoClient(mongo_uri)
-db = client['hrDashboard']  # Database name
+db = client['hrDashboard'] # The database name
 
-# Validate email format
+# --- Helper Functions ---
 def is_valid_email(email):
+    """Validates email format."""
     email_regex = r'^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$'
     return re.match(email_regex, email)
 
-# API Endpoints
+# --- Authentication Endpoints ---
 
-# User Signup
 @app.route('/api/signup', methods=['POST'])
 def signup():
+    """Registers a new HR user."""
     try:
         data = request.get_json()
         email = data.get("email")
@@ -32,36 +36,26 @@ def signup():
 
         if not email or not password:
             return jsonify({"error": "Email and password are required"}), 400
-
         if not is_valid_email(email):
             return jsonify({"error": "Invalid email format"}), 400
-
         if len(password) < 6:
             return jsonify({"error": "Password must be at least 6 characters long"}), 400
-
-        # Check if email already exists
         if db.users.find_one({"email": email}):
             return jsonify({"error": "Email already registered"}), 409
 
-        # Hash the password
         hashed_password = bcrypt.hashpw(password.encode('utf-8'), bcrypt.gensalt()).decode('utf-8')
-
-        user = {
-            "id": str(uuid.uuid4()),
-            "email": email,
-            "hashedPassword": hashed_password,
-            "createdAt": datetime.utcnow()
-        }
+        user = {"email": email, "hashedPassword": hashed_password, "createdAt": datetime.utcnow()}
         db.users.insert_one(user)
-        del user['_id']  # Remove MongoDB _id
-        del user['hashedPassword']  # Remove sensitive data from response
-        return jsonify({"message": "User registered successfully", "user": user}), 201
+        
+        user_response = {"email": user["email"], "createdAt": user["createdAt"]}
+        return jsonify({"message": "User registered successfully", "user": user_response}), 201
     except Exception as e:
-        return jsonify({"error": f"Failed to register user: {str(e)}"}), 500
+        app.logger.error(f"Signup error: {e}")
+        return jsonify({"error": "An internal server error occurred"}), 500
 
-# User Login
 @app.route('/api/login', methods=['POST'])
 def login():
+    """Logs in an HR user."""
     try:
         data = request.get_json()
         email = data.get("email")
@@ -70,118 +64,128 @@ def login():
         if not email or not password:
             return jsonify({"error": "Email and password are required"}), 400
 
-        # Find user by email
-        user = db.users.find_one({"email": email}, {'_id': 0})
-        if not user:
+        user = db.users.find_one({"email": email})
+        if not user or not bcrypt.checkpw(password.encode('utf-8'), user['hashedPassword'].encode('utf-8')):
             return jsonify({"error": "Invalid email or password"}), 401
-
-        # Verify password
-        if not bcrypt.checkpw(password.encode('utf-8'), user['hashedPassword'].encode('utf-8')):
-            return jsonify({"error": "Invalid email or password"}), 401
-
-        del user['hashedPassword']  # Remove sensitive data from response
-        return jsonify({"message": "Login successful", "user": user}), 200
+        
+        user_response = {"email": user["email"], "id": str(user["_id"])}
+        return jsonify({"message": "Login successful", "user": user_response}), 200
     except Exception as e:
-        return jsonify({"error": f"Failed to login: {str(e)}"}), 500
+        app.logger.error(f"Login error: {e}")
+        return jsonify({"error": "An internal server error occurred"}), 500
 
-# Get all roles
+# --- Roles Endpoints (Scoped to HR User) ---
+
 @app.route('/api/roles', methods=['GET'])
 def get_roles():
+    """Gets all roles created by a specific HR user."""
+    hr_email = request.args.get('hrEmail')
+    if not hr_email:
+        return jsonify({"error": "hrEmail query parameter is required"}), 400
+    
     try:
-        roles = list(db.roles.find({}, {'_id': 0}))  # Exclude MongoDB's _id field
-        return jsonify(roles), 200
+        roles_cursor = db.roles.find({"hrEmail": hr_email})
+        roles_list = []
+        for role in roles_cursor:
+            role['_id'] = str(role['_id']) # Convert ObjectId for JSON compatibility
+            roles_list.append(role)
+        return jsonify(roles_list), 200
     except Exception as e:
-        return jsonify({"error": f"Failed to fetch roles: {str(e)}"}), 500
+        app.logger.error(f"Get roles error: {e}")
+        return jsonify({"error": "An internal server error occurred"}), 500
 
-# Create a new role
 @app.route('/api/roles', methods=['POST'])
 def create_role():
+    """Creates a new role and associates it with the logged-in HR user."""
     try:
         data = request.get_json()
-        title = data.get("title")
-        description = data.get("description")
-        date = data.get("date")
-        max_students = data.get("maxStudents")
-        seats_available = data.get("seatsAvailable")
+        hr_email = data.get("hrEmail")
+        
+        if not hr_email:
+            return jsonify({"error": "hrEmail is required to create a role"}), 400
 
-        if not title or not description or not date or not max_students or not seats_available:
-            return jsonify({"error": "Required fields: title, description, date, maxStudents, seatsAvailable"}), 400
-
-        try:
-            max_students = int(max_students)
-            seats_available = int(seats_available)
-            if max_students < 1 or seats_available < 0 or seats_available > max_students:
-                return jsonify({"error": "Invalid maxStudents or seatsAvailable values"}), 400
-        except ValueError:
-            return jsonify({"error": "maxStudents and seatsAvailable must be numbers"}), 400
+        # Basic validation for required fields
+        required_fields = ["title", "description", "date", "maxStudents", "seatsAvailable", "package"]
+        if not all(field in data for field in required_fields):
+            return jsonify({"error": f"Missing one of required fields: {required_fields}"}), 400
 
         role = {
-            "id": str(uuid.uuid4()),
-            "title": title,
-            "description": description,
-            "date": date,
+            "hrEmail": hr_email,
+            "title": data.get("title"),
+            "description": data.get("description"),
+            "date": data.get("date"),
             "duration": data.get("duration", "60"),
-            "maxStudents": max_students,
-            "seatsAvailable": seats_available,
-            "package": data.get("package", ""),
+            "maxStudents": int(data.get("maxStudents")),
+            "seatsAvailable": int(data.get("seatsAvailable")),
+            "package": data.get("package"),
             "studentsCount": 0,
             "status": "Draft",
             "createdAt": datetime.utcnow()
         }
-        db.roles.insert_one(role)
-        del role['_id']  # Remove MongoDB _id for frontend compatibility
+        result = db.roles.insert_one(role)
+        role['_id'] = str(result.inserted_id)
         return jsonify(role), 201
     except Exception as e:
-        return jsonify({"error": f"Failed to create role: {str(e)}"}), 500
+        app.logger.error(f"Create role error: {e}")
+        return jsonify({"error": "An internal server error occurred"}), 500
 
-# Get all students
+# --- Students Endpoints (Scoped to HR User) ---
+
 @app.route('/api/students', methods=['GET'])
 def get_students():
+    """Gets all students added by a specific HR user."""
+    hr_email = request.args.get('hrEmail')
+    if not hr_email:
+        return jsonify({"error": "hrEmail query parameter is required"}), 400
+        
     try:
-        students = list(db.students.find({}, {'_id': 0, 'password': 0}))  # Exclude _id and password
-        return jsonify(students), 200
+        # Find students, excluding the sensitive password field from the result
+        students_cursor = db.students.find({"hrEmail": hr_email}, {'password': 0})
+        students_list = []
+        for student in students_cursor:
+            student['_id'] = str(student['_id'])
+            students_list.append(student)
+        return jsonify(students_list), 200
     except Exception as e:
-        return jsonify({"error": f"Failed to fetch students: {str(e)}"}), 500
+        app.logger.error(f"Get students error: {e}")
+        return jsonify({"error": "An internal server error occurred"}), 500
 
-# Create a new student
 @app.route('/api/students', methods=['POST'])
 def create_student():
+    """Creates a new student and associates them with the logged-in HR user."""
     try:
         data = request.get_json()
-        name = data.get("name")
-        email = data.get("email")
-        roll_no = data.get("rollNo")
-        role = data.get("role")
-        password = data.get("password")
+        hr_email = data.get("hrEmail")
 
-        if not name or not email or not roll_no or not role or not password:
-            return jsonify({"error": "Required fields: name, email, rollNo, role, password"}), 400
+        if not hr_email:
+            return jsonify({"error": "hrEmail is required to add a student"}), 400
+        
+        required_fields = ["name", "email", "rollNo", "role", "password"]
+        if not all(field in data for field in required_fields):
+            return jsonify({"error": f"Missing one of required fields: {required_fields}"}), 400
+        
+        if db.students.find_one({"email": data.get("email")}):
+            return jsonify({"error": "A student with this email already exists"}), 409
 
-        if not is_valid_email(email):
-            return jsonify({"error": "Invalid email format"}), 400
-
-        if db.students.find_one({"email": email}):
-            return jsonify({"error": "Student email already registered"}), 409
-
-        # Hash the password
-        hashed_password = bcrypt.hashpw(password.encode('utf-8'), bcrypt.gensalt()).decode('utf-8')
+        hashed_password = bcrypt.hashpw(data.get("password").encode('utf-8'), bcrypt.gensalt()).decode('utf-8')
 
         student = {
-            "id": str(uuid.uuid4()),
-            "name": name,
-            "email": email,
-            "rollNo": roll_no,
-            "role": role,
+            "hrEmail": hr_email,
+            "name": data.get("name"),
+            "email": data.get("email"),
+            "rollNo": data.get("rollNo"),
+            "role": data.get("role"),
             "password": hashed_password,
             "status": "Eligible",
             "createdAt": datetime.utcnow()
         }
-        db.students.insert_one(student)
-        del student['_id']  # Remove MongoDB _id
-        del student['password']  # Remove password from response
+        result = db.students.insert_one(student)
+        student['_id'] = str(result.inserted_id)
+        del student['password'] # Never send the password hash back in the response
         return jsonify(student), 201
     except Exception as e:
-        return jsonify({"error": f"Failed to create student: {str(e)}"}), 500
+        app.logger.error(f"Create student error: {e}")
+        return jsonify({"error": "An internal server error occurred"}), 500
 
 if __name__ == '__main__':
     app.run(host='0.0.0.0', port=5000, debug=True)
