@@ -1,5 +1,3 @@
-# app.py
-
 from flask import Flask, jsonify, request
 from flask_cors import CORS
 from pymongo import MongoClient
@@ -16,7 +14,7 @@ CORS(app, resources={r"/api/*": {"origins": "http://localhost:5173"}})
 # Make sure your MongoDB server is running
 mongo_uri = "mongodb://localhost:27017/"
 client = MongoClient(mongo_uri)
-db = client['hrDashboard'] # The database name
+db = client['hrDashboard']  # The database name
 
 # --- Helper Functions ---
 def is_valid_email(email):
@@ -74,6 +72,44 @@ def login():
         app.logger.error(f"Login error: {e}")
         return jsonify({"error": "An internal server error occurred"}), 500
 
+# --- Candidate Login Endpoint ---
+@app.route('/api/candidate/login', methods=['POST'])
+def candidate_login():
+    """Logs in a candidate (student) user."""
+    try:
+        data = request.get_json()
+        email = data.get("email")
+        password = data.get("password")
+
+        if not email or not password:
+            return jsonify({"error": "Email and password are required"}), 400
+
+        # Find student in the database using email only
+        student = db.students.find_one({"email": email})
+        if not student or not bcrypt.checkpw(password.encode('utf-8'), student['password'].encode('utf-8')):
+            return jsonify({"error": "Invalid credentials"}), 401
+
+        # Prepare response (exclude password)
+        student_response = {
+            "id": str(student["_id"]),
+            "name": student["name"],
+            "email": student["email"],
+            "role": student["role"],
+            "rollNo": student["rollNo"],
+            "status": student["status"]
+        }
+        # Simulate a token (replace with JWT in production)
+        token = "dummy-token"
+
+        return jsonify({
+            "message": "Login successful",
+            "student": student_response,
+            "token": token
+        }), 200
+    except Exception as e:
+        app.logger.error(f"Candidate login error: {e}")
+        return jsonify({"error": "An internal server error occurred"}), 500
+
 # --- Roles Endpoints (Scoped to HR User) ---
 
 @app.route('/api/roles', methods=['GET'])
@@ -87,7 +123,7 @@ def get_roles():
         roles_cursor = db.roles.find({"hrEmail": hr_email})
         roles_list = []
         for role in roles_cursor:
-            role['_id'] = str(role['_id']) # Convert ObjectId for JSON compatibility
+            role['_id'] = str(role['_id'])  # Convert ObjectId for JSON compatibility
             roles_list.append(role)
         return jsonify(roles_list), 200
     except Exception as e:
@@ -181,11 +217,38 @@ def create_student():
         }
         result = db.students.insert_one(student)
         student['_id'] = str(result.inserted_id)
-        del student['password'] # Never send the password hash back in the response
+        del student['password']  # Never send the password hash back in the response
         return jsonify(student), 201
     except Exception as e:
         app.logger.error(f"Create student error: {e}")
         return jsonify({"error": "An internal server error occurred"}), 500
+    
+@app.route('/api/get-random-questions', methods=['GET'])
+def get_random_questions():
+    """Fetches a random set of questions from the aptitude collection."""
+    
+    try:
+        # Get the total number of questions in the aptitude collection
+        total_questions = db.aptitude.count_documents({})
+        if total_questions == 0:
+            return jsonify({"error": "No questions available in the aptitude collection"}), 404
+
+        # Determine how many questions to fetch (e.g., 5, or use a query parameter)
+        num_questions = min(request.args.get('count', default=5, type=int), total_questions)
+        
+        # Fetch random questions using aggregate with $sample
+        pipeline = [{"$sample": {"size": num_questions}}]
+        questions = list(db.aptitude.aggregate(pipeline))
+
+        # Convert ObjectId to string for JSON compatibility
+        for question in questions:
+            question['_id'] = str(question['_id'])
+
+        return jsonify(questions), 200
+    except Exception as e:
+        app.logger.error(f"Get random questions error: {e}")
+        return jsonify({"error": "An internal server error occurred"}), 500
+    
 
 if __name__ == '__main__':
     app.run(host='0.0.0.0', port=5000, debug=True)

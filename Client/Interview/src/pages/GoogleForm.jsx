@@ -22,10 +22,11 @@ const AdvancedFormMonitoringSystem = () => {
   const [securityAlertMessage, setSecurityAlertMessage] = useState("");
   const [fullScreenWarningCount, setFullScreenWarningCount] = useState(0);
 
-  // Google Form state
-  const [googleFormEmbedURL, setGoogleFormEmbedURL] = useState(null);
-  const [loadingForm, setLoadingForm] = useState(false);
-  const [formError, setFormError] = useState(null);
+  // Quiz state
+  const [questions, setQuestions] = useState([]);
+  const [answers, setAnswers] = useState({});
+  const [loadingQuestions, setLoadingQuestions] = useState(false);
+  const [questionError, setQuestionError] = useState(null);
 
   const navigate = useNavigate();
   
@@ -53,13 +54,13 @@ const AdvancedFormMonitoringSystem = () => {
   const MAX_SOUND_ALERTS = 30;
   const FULLSCREEN_CHECK_INTERVAL = 2000;
 
-  // Function to fetch Google Form link from API
-  const fetchGoogleFormLink = async () => {
+  // Fetch random questions from backend
+  const fetchQuestions = async () => {
     try {
-      setLoadingForm(true);
-      setFormError(null);
+      setLoadingQuestions(true);
+      setQuestionError(null);
 
-      const response = await fetch('http://localhost:5000/create-google-form', {
+      const response = await fetch('http://localhost:5000/api/get-random-questions', {
         method: 'GET',
         headers: {
           'Content-Type': 'application/json',
@@ -67,20 +68,61 @@ const AdvancedFormMonitoringSystem = () => {
       });
 
       if (!response.ok) {
-        throw new Error('Failed to create Google Form');
+        throw new Error(`HTTP error! Status: ${response.status}`);
       }
 
       const data = await response.json();
-      if (data.google_form_link) {
-        setGoogleFormEmbedURL(data.google_form_link);
-      } else {
-        throw new Error('No Google Form link returned');
+      console.log('Fetched data:', data); // Debug log
+
+      // Handle both cases: direct array or wrapped in 'questions' key
+      const fetchedQuestions = Array.isArray(data) ? data : data.questions || [];
+      if (fetchedQuestions.length === 0) {
+        throw new Error('No questions returned from the server');
       }
+
+      setQuestions(fetchedQuestions);
+      setAnswers({}); // Reset answers
     } catch (err) {
-      console.error("Error fetching Google Form link:", err);
-      setFormError(`Failed to load Google Form: ${err.message}`);
+      console.error("Error fetching questions:", err);
+      setQuestionError(`Failed to load questions: ${err.message}`);
     } finally {
-      setLoadingForm(false);
+      setLoadingQuestions(false);
+    }
+  };
+
+  // Handle answer selection
+  const handleAnswerSelect = (questionIndex, option) => {
+    setAnswers(prev => ({
+      ...prev,
+      [questionIndex]: option
+    }));
+  };
+
+  // Submit results to backend
+  const submitResults = async () => {
+    try {
+      const response = await fetch('http://localhost:5000/api/submit-results', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          answers,
+          questions,
+          user_email: "shimal@example.com" // Hardcoded for now
+        })
+      });
+
+      if (!response.ok) {
+        throw new Error('Failed to submit results');
+      }
+
+      const data = await response.json();
+      return data.score;
+    } catch (err) {
+      console.error("Error submitting results:", err);
+      setQuestionError(`Failed to submit results: ${err.message}`);
+      return 0;
     }
   };
 
@@ -104,19 +146,12 @@ const AdvancedFormMonitoringSystem = () => {
     setSecurityAlertMessage(message);
     setShowSecurityAlert(true);
     endTest();
-    // You might want to save this violation to your backend as well
   };
 
-  // Fetch form link on component mount (optional) or when starting test
-  useEffect(() => {
-    // Uncomment this if you want to fetch the form on mount
-    // fetchGoogleFormLink();
-  }, []);
-
-  // Modified startTest to fetch new form
+  // Start test
   const startTest = async () => {
-    await fetchGoogleFormLink(); // Fetch new form before starting
-    if (!formError) { // Only proceed if form was fetched successfully
+    await fetchQuestions();
+    if (!questionError && questions.length > 0) {
       startCamera();
       startAudioMonitoring();
       enterFullScreen();
@@ -126,7 +161,6 @@ const AdvancedFormMonitoringSystem = () => {
       setShowSecurityAlert(false);
       setFullScreenWarningCount(0);
       
-      // Start checking fullscreen status periodically
       fullScreenCheckIntervalRef.current = setInterval(() => {
         const isDocFullScreen = document.fullscreenElement || document.mozFullScreenElement || 
                                 document.webkitFullscreenElement || document.msFullscreenElement;
@@ -136,12 +170,13 @@ const AdvancedFormMonitoringSystem = () => {
           if (fullScreenWarningCount >= 3) {
             triggerSecurityAlert("Test must be taken in full screen mode. Your session has been terminated.");
           } else {
-            // Try to re-enter fullscreen
             enterFullScreen();
             alert(`Warning: Please stay in full screen mode. Warning ${fullScreenWarningCount + 1}/3`);
           }
         }
       }, FULLSCREEN_CHECK_INTERVAL);
+    } else {
+      console.log("Test not started. Question error:", questionError, "Questions length:", questions.length);
     }
   };
 
@@ -201,7 +236,6 @@ const AdvancedFormMonitoringSystem = () => {
             setShowSoundAlert(true);
             setSoundAlertCount(prev => {
               const newCount = prev + 1;
-              // Check if we've exceeded the sound alert threshold
               if (newCount > MAX_SOUND_ALERTS) {
                 triggerSecurityAlert("Excessive background noise detected. Your test session has been terminated.");
               }
@@ -287,7 +321,7 @@ const AdvancedFormMonitoringSystem = () => {
   };
 
   // End test
-  const endTest = () => {
+  const endTest = async () => {
     if (fullScreenCheckIntervalRef.current) {
       clearInterval(fullScreenCheckIntervalRef.current);
     }
@@ -295,6 +329,7 @@ const AdvancedFormMonitoringSystem = () => {
     stopAudioMonitoring();
     exitFullScreen();
     setIsTestMode(false);
+    await submitResults();
     navigate('/result');
   };
 
@@ -305,7 +340,6 @@ const AdvancedFormMonitoringSystem = () => {
                               document.webkitFullscreenElement || document.msFullscreenElement;
       setIsFullScreen(!!isDocFullScreen);
       if (!isDocFullScreen && isTestMode) {
-        // Full screen exited during test
         setFullScreenWarningCount(prev => prev + 1);
         if (fullScreenWarningCount >= 2) {
           triggerSecurityAlert("Test must be taken in full screen mode. Your session has been terminated.");
@@ -329,7 +363,6 @@ const AdvancedFormMonitoringSystem = () => {
       if (isTestMode && document.visibilityState === 'hidden') {
         setTabSwitchCount(prev => {
           const newCount = prev + 1;
-          // Check if we've exceeded the tab switch threshold
           if (newCount > MAX_TAB_SWITCHES) {
             triggerSecurityAlert("Excessive tab switching detected. Your test session has been terminated.");
           }
@@ -346,7 +379,6 @@ const AdvancedFormMonitoringSystem = () => {
       if (isTestMode) {
         setTabSwitchCount(prev => {
           const newCount = prev + 1;
-          // Check if we've exceeded the tab switch threshold
           if (newCount > MAX_TAB_SWITCHES) {
             triggerSecurityAlert("Excessive tab switching detected. Your test session has been terminated.");
           }
@@ -355,7 +387,7 @@ const AdvancedFormMonitoringSystem = () => {
       }
     };
     window.addEventListener('blur', handleWindowBlur);
-    return () => window.removeEventListener('blur', handleWindowBlur);
+    return () => window.removeEventListener('blur', handleWindowBlur); // Fixed typo
   }, [isTestMode]);
 
   useEffect(() => {
@@ -380,7 +412,7 @@ const AdvancedFormMonitoringSystem = () => {
     <div ref={containerRef} className="flex flex-col bg-gray-100 min-h-screen">
       <div className={`bg-blue-600 text-white p-3 ${isTestMode ? 'sticky top-0 z-10' : ''}`}>
         <div className="flex justify-between items-center">
-          <h1 className="text-xl font-bold">Advanced Form Monitoring System</h1>
+          <h1 className="text-xl font-bold">Aptitude Test System</h1>
           {isTestMode ? (
             <div className="flex items-center space-x-4">
               <div className="text-sm font-medium bg-blue-700 px-3 py-1 rounded-full">
@@ -400,9 +432,9 @@ const AdvancedFormMonitoringSystem = () => {
             <button
               onClick={startTest}
               className="bg-green-500 hover:bg-green-600 text-white px-4 py-2 rounded"
-              disabled={loadingForm}
+              disabled={loadingQuestions}
             >
-              {loadingForm ? 'Creating Form...' : 'Start Test in Full Screen'}
+              {loadingQuestions ? 'Loading Questions...' : 'Start Test in Full Screen'}
             </button>
           )}
         </div>
@@ -579,13 +611,13 @@ const AdvancedFormMonitoringSystem = () => {
           )}
         </div>
 
-        <div className={`google-form-section bg-white rounded-lg shadow-md p-4 ${isTestMode ? 'w-full md:w-2/3' : 'w-full md:w-1/2'}`}>
-          <h2 className="text-xl font-bold mb-4 text-center">Assessment Form</h2>
+        <div className={`assessment-section bg-white rounded-lg shadow-md p-4 ${isTestMode ? 'w-full md:w-2/3' : 'w-full md:w-1/2'}`}>
+          <h2 className="text-xl font-bold mb-4 text-center">Aptitude Test</h2>
           
           {isTestMode && (
             <div className="mb-4 bg-yellow-50 border-l-4 border-yellow-400 p-3 rounded-lg">
               <p className="text-sm font-medium text-yellow-800">
-                <span className="font-bold">Test in Progress:</span> Please complete the form below. Do not switch tabs or make excessive noise.
+                <span className="font-bold">Test in Progress:</span> Answer the questions below. Do not switch tabs or make excessive noise.
               </p>
               <p className="text-xs mt-1 text-yellow-700">
                 <span className="font-bold">Warning:</span> More than {MAX_TAB_SWITCHES} tab switches or {MAX_SOUND_ALERTS} sound alerts will automatically end your test.
@@ -593,32 +625,43 @@ const AdvancedFormMonitoringSystem = () => {
             </div>
           )}
 
-          <div className={`google-form-container overflow-auto border border-gray-200 rounded ${isTestMode ? 'h-screen max-h-[calc(100vh-240px)]' : 'h-96'}`}>
-            {loadingForm ? (
-              <div className="text-center p-4">Loading form...</div>
-            ) : formError ? (
-              <div className="text-red-500 text-center p-4">{formError}</div>
-            ) : googleFormEmbedURL ? (
-              <iframe 
-                src={googleFormEmbedURL}
-                width="100%" 
-                height="100%" 
-                frameBorder="0" 
-                marginHeight="0" 
-                marginWidth="0"
-                className="w-full h-full min-h-96"
-              >
-                Loading Google Form...
-              </iframe>
+          <div className={`question-container overflow-auto border border-gray-200 rounded ${isTestMode ? 'h-screen max-h-[calc(100vh-240px)]' : 'h-96'}`}>
+            {loadingQuestions ? (
+              <div className="text-center p-4">Loading questions...</div>
+            ) : questionError ? (
+              <div className="text-red-500 text-center p-4">{questionError}</div>
+            ) : questions.length > 0 ? (
+              <div className="p-4 space-y-6">
+                {questions.map((q, index) => (
+                  <div key={index} className="border-b pb-4">
+                    <h3 className="text-lg font-medium mb-2">{index + 1}. {q.question}</h3>
+                    <div className="space-y-2">
+                      {q.options.map((option, optIndex) => (
+                        <label key={optIndex} className="flex items-center space-x-2">
+                          <input
+                            type="radio"
+                            name={`question-${index}`}
+                            value={option}
+                            checked={answers[index] === option}
+                            onChange={() => handleAnswerSelect(index, option)}
+                            className="form-radio h-4 w-4 text-blue-600"
+                          />
+                          <span>{option}</span>
+                        </label>
+                      ))}
+                    </div>
+                  </div>
+                ))}
+              </div>
             ) : (
-              <div className="text-center p-4">Click "Start Test" to generate a new form</div>
+              <div className="text-center p-4">Click "Start Test" to begin the aptitude test</div>
             )}
           </div>
 
           {!isTestMode && (
             <div className="mt-4 p-3 bg-blue-50 border border-blue-200 rounded-lg">
               <p className="text-sm">
-                <strong>Instructions:</strong> Click "Start Test in Full Screen" to begin the assessment. A new Google Form will be generated.
+                <strong>Instructions:</strong> Click "Start Test in Full Screen" to begin the aptitude test. 15 random questions will be displayed.
               </p>
               <p className="text-xs mt-2 text-blue-700">
                 <strong>Note:</strong> The system will monitor for tab switching and background noise. Excessive violations will terminate your test session.
@@ -627,6 +670,10 @@ const AdvancedFormMonitoringSystem = () => {
           )}
         </div>
       </div>
+
+      {/* Hidden video and canvas elements for webcam */}
+      <video ref={videoRef} style={{ display: 'none' }} autoPlay />
+      <canvas ref={canvasRef} style={{ display: 'none' }} />
     </div>
   );
 };

@@ -1,7 +1,8 @@
-import React, { useState } from "react";
+import React, { useState, useContext } from "react";
 import axios from "axios";
 import { useNavigate } from "react-router-dom";
 import { Mail, Lock, Hash, UserCheck, Eye, EyeOff } from "lucide-react";
+import { AuthContext } from "../context/AuthContext"; // Adjust path as needed
 
 function StudentLogin() {
   const [form, setForm] = useState({
@@ -16,6 +17,7 @@ function StudentLogin() {
   const [error, setError] = useState("");
   
   const navigate = useNavigate();
+  const { handleCandidateLogin } = useContext(AuthContext);
 
   const handleChange = (e) => {
     setForm({ ...form, [e.target.name]: e.target.value });
@@ -37,14 +39,18 @@ function StudentLogin() {
       });
       
       // Store user details in localStorage
-      localStorage.setItem("candidate", JSON.stringify({
+      const candidateData = {
         id: res.data.student.id,
         email: res.data.student.email,
         role: res.data.student.role,
         rollNo: res.data.student.rollNo,
         status: res.data.student.status,
         token: res.data.token
-      }));
+      };
+      localStorage.setItem("candidate", JSON.stringify(candidateData));
+      
+      // Update AuthContext
+      handleCandidateLogin(candidateData);
       
       // Navigate to user-select page after successful login
       navigate("/user-select");

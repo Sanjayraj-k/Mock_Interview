@@ -19,6 +19,13 @@ const ProtectedHRRoute = ({ children }) => {
   return isHRAuthenticated ? children : <Navigate to="/hr/login" replace />;
 };
 
+// Protected Route for Candidates
+const ProtectedCandidateRoute = ({ children }) => {
+  const { isCandidateAuthenticated } = useContext(AuthContext);
+  console.log('ProtectedCandidateRoute: isCandidateAuthenticated =', isCandidateAuthenticated); // Debug
+  return isCandidateAuthenticated ? children : <Navigate to="/candidate/login" replace />;
+};
+
 function App() {
   return (
     <AuthProvider>
@@ -49,12 +56,47 @@ function App() {
               <Route path="login" element={<StudentLogin />} />
             </Route>
 
-            {/* 4. Candidate Pages (No Protection) */}
-            <Route path="/user-select" element={<UserSelect />} />
-            <Route path="/face" element={<FaceDetection />} />
-            <Route path="/protected" element={<Protected />} />
-            <Route path="/googleform" element={<GoogleFormWithWebcam />} />
-            <Route path="/web" element={<WebCam />} />
+            {/* 4. Protected Candidate Pages */}
+            <Route
+              path="/user-select"
+              element={
+                <ProtectedCandidateRoute>
+                  <UserSelect />
+                </ProtectedCandidateRoute>
+              }
+            />
+            <Route
+              path="/face"
+              element={
+                <ProtectedCandidateRoute>
+                  <FaceDetection />
+                </ProtectedCandidateRoute>
+              }
+            />
+            <Route
+              path="/protected"
+              element={
+                <ProtectedCandidateRoute>
+                  <Protected />
+                </ProtectedCandidateRoute>
+              }
+            />
+            <Route
+              path="/googleform"
+              element={
+                <ProtectedCandidateRoute>
+                  <GoogleFormWithWebcam />
+                </ProtectedCandidateRoute>
+              }
+            />
+            <Route
+              path="/web"
+              element={
+                <ProtectedCandidateRoute>
+                  <WebCam />
+                </ProtectedCandidateRoute>
+              }
+            />
 
             {/* 5. Fallback Route - Redirects any unknown URL to the landing page */}
             <Route path="*" element={<Navigate to="/" replace />} />
