@@ -99,7 +99,11 @@ function App() {
                 </ProtectedCandidateRoute>
               }
             />
-            <Route path="/coding" element={<CodingPage/>}/>
+            <Route path="/coding" element={
+              <ProtectedCandidateRoute>
+              <CodingPage/>
+              </ProtectedCandidateRoute>
+            }/>
 
             {/* 5. Fallback Route - Redirects any unknown URL to the landing page */}
             <Route path="*" element={<Navigate to="/" replace />} />
