@@ -5,6 +5,7 @@ from bson import ObjectId
 from datetime import datetime
 import bcrypt
 import re
+from pytz import timezone
 
 app = Flask(__name__)
 # This allows your React app at localhost:5173 to communicate with your Flask server
@@ -226,21 +227,15 @@ def create_student():
 @app.route('/api/get-random-questions', methods=['GET'])
 def get_random_questions():
     """Fetches a random set of questions from the aptitude collection."""
-    
     try:
-        # Get the total number of questions in the aptitude collection
         total_questions = db.aptitude.count_documents({})
         if total_questions == 0:
             return jsonify({"error": "No questions available in the aptitude collection"}), 404
 
-        # Determine how many questions to fetch (e.g., 5, or use a query parameter)
         num_questions = min(request.args.get('count', default=5, type=int), total_questions)
-        
-        # Fetch random questions using aggregate with $sample
         pipeline = [{"$sample": {"size": num_questions}}]
         questions = list(db.aptitude.aggregate(pipeline))
 
-        # Convert ObjectId to string for JSON compatibility
         for question in questions:
             question['_id'] = str(question['_id'])
 
@@ -248,7 +243,51 @@ def get_random_questions():
     except Exception as e:
         app.logger.error(f"Get random questions error: {e}")
         return jsonify({"error": "An internal server error occurred"}), 500
-    
+
+# --- New Results Endpoint ---
+@app.route('/api/submit-results', methods=['POST'])
+def submit_results():
+    """Stores quiz results for a candidate, including user details, score, percentage, and round."""
+    try:
+        data = request.get_json()
+        candidate_data = data.get("candidate")
+        score = data.get("score")
+        percentage = data.get("percentage")
+        total_questions = data.get("total_questions")
+        round_number = data.get("round")
+
+        # Validate required fields
+        required_fields = ["id", "email", "rollNo", "role", "status"]
+        if not candidate_data or not all(field in candidate_data for field in required_fields):
+            return jsonify({"error": "Missing required candidate data fields: id, email, rollNo, role, status"}), 400
+        if score is None or percentage is None or total_questions is None or round_number is None:
+            return jsonify({"error": "Missing required fields: score, percentage, total_questions, or round"}), 400
+
+        # Prepare quiz result document
+        quiz_result = {
+            "candidate_id": candidate_data["id"],
+            "email": candidate_data["email"],
+            "rollNo": candidate_data["rollNo"],
+            "role": candidate_data["role"],
+            "status": candidate_data["status"],
+            "score": int(score),
+            "percentage": float(percentage),
+            "total_questions": int(total_questions),
+            "round": int(round_number),
+            "submittedAt": datetime.utcnow()
+        }
+
+        # Insert into quiz_results collection
+        result = db.quiz_results.insert_one(quiz_result)
+        quiz_result['_id'] = str(result.inserted_id)
+
+        return jsonify({
+            "message": "Quiz results stored successfully",
+            "quiz_result": quiz_result
+        }), 201
+    except Exception as e:
+        app.logger.error(f"Submit results error: {e}")
+        return jsonify({"error": "An internal server error occurred"}), 500
 
 if __name__ == '__main__':
     app.run(host='0.0.0.0', port=5000, debug=True)

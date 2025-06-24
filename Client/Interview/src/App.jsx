@@ -11,7 +11,9 @@ import FaceDetection from './pages/FaceDetection.jsx';
 import Protected from './pages/Protected.jsx'; // Added assuming it exists
 import GoogleFormWithWebcam from './pages/GoogleForm.jsx';
 import WebCam from './pages/webCam.jsx'; // Adjusted extension for consistency
-
+import CodingPage from './pages/Codingpage.jsx';
+import Co from './pages/co.jsx'; 
+// Assuming this is the code editor page
 // Protected Route for HR
 const ProtectedHRRoute = ({ children }) => {
   const { isHRAuthenticated } = useContext(AuthContext);
@@ -97,6 +99,7 @@ function App() {
                 </ProtectedCandidateRoute>
               }
             />
+            <Route path="/coding" element={<CodingPage/>}/>
 
             {/* 5. Fallback Route - Redirects any unknown URL to the landing page */}
             <Route path="*" element={<Navigate to="/" replace />} />
