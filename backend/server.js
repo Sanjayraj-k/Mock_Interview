@@ -38,10 +38,8 @@ const languageConfigs = {
 
 const problems = {
   'gas-station': {
-    number: 134,
+    number: 1,
     title: 'Gas Station',
-    difficulty: 'Medium',
-    acceptance: '40.1%',
     description:
       'There are n gas stations along a circular route, where the amount of gas at the ith station is gas[i]. You have a car with an unlimited gas tank and it costs cost[i] of gas to travel from the ith station to its next (i + 1)th station. You begin the journey with an empty tank at one of the gas stations. Return the starting gas station’s index if you can travel around the circuit once in the clockwise direction, otherwise return -1. If there exists a solution, it is guaranteed to be unique.',
     examples: [
@@ -69,10 +67,8 @@ const problems = {
     },
   },
   'candy': {
-    number: 135,
+    number: 2,
     title: 'Candy',
-    difficulty: 'Hard',
-    acceptance: '35.8%',
     description:
       'There are n children standing in a line. Each child is assigned a rating value given in the integer array ratings. You are giving candies to these children subjected to the following requirements: 1. Each child must have at least one candy. 2. Children with a higher rating get more candies than their neighbors. Return the minimum number of candies you need to have to distribute the candies to the children.',
     examples: [
@@ -99,10 +95,8 @@ const problems = {
     },
   },
   'longest-increasing-subsequence': {
-    number: 300,
+    number: 3,
     title: 'Longest Increasing Subsequence',
-    difficulty: 'Medium',
-    acceptance: '48.5%',
     description:
       'Given an integer array nums, return the length of the longest strictly increasing subsequence. A subsequence is a sequence that can be derived from an array by deleting some or no elements without changing the order of the remaining elements.',
     examples: [
@@ -525,7 +519,7 @@ app.get('/health', (req, res) => {
   res.json({ status: 'OK', timestamp: new Date().toISOString() });
 });
 
-const PORT = process.env.PORT || 5000;
+const PORT = process.env.PORT || 3000;
 app.listen(PORT, () => {
   console.log(`Server running on port ${PORT}`);
   console.log('Supported languages:', Object.keys(languageConfigs));

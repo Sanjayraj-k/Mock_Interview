@@ -13,6 +13,7 @@ import GoogleFormWithWebcam from './pages/GoogleForm.jsx';
 import WebCam from './pages/webCam.jsx'; // Adjusted extension for consistency
 import CodingPage from './pages/Codingpage.jsx';
 import Co from './pages/co.jsx'; 
+import Round1 from './pages/Round1.jsx'; // Adjusted import for clarity
 // Assuming this is the code editor page
 // Protected Route for HR
 const ProtectedHRRoute = ({ children }) => {
@@ -99,6 +100,11 @@ function App() {
                 </ProtectedCandidateRoute>
               }
             />
+             <Route path="/round1" element={
+              <ProtectedCandidateRoute>
+              <Round1/>
+              </ProtectedCandidateRoute>
+            }/>
             <Route path="/coding" element={
               <ProtectedCandidateRoute>
               <CodingPage/>

@@ -15,7 +15,7 @@ const CompetitiveCodingPlatform = () => {
   const [scores, setScores] = useState({ 'gas-station': 0, 'candy': 0, 'longest-increasing-subsequence': 0 });
   const [showFinalScore, setShowFinalScore] = useState(false);
 
-  const API_BASE = 'http://localhost:5000';
+  const API_BASE = 'http://localhost:3000';
 
   const languages = [
     { value: 'java', label: 'Java', icon: '☕' },
@@ -143,12 +143,39 @@ const CompetitiveCodingPlatform = () => {
     }
   };
 
-  const handleFinishTest = () => {
-    setShowFinalScore(true);
-  };
 
   const totalScore = Object.values(scores).reduce((sum, score) => sum + score, 0);
-
+  localStorage.setItem('score', JSON.stringify(scores));
+  localStorage.setItem('totalScore', totalScore);
+  const handleFinishTest = async () => {
+  setShowFinalScore(false);
+  try {
+    const candidateData = JSON.parse(localStorage.getItem('candidate')) || {};
+    const response = await fetch("http://localhost:5000/api/round2/results", {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        scores,
+        totalScore,
+        candidateId: candidateData.id,
+        candidateName: candidateData.name,
+        candidateEmail: candidateData.email,
+        candidateRoll: candidateData.role || 'candidate',
+        CandidateRollno: candidateData.rollNo || 'N/A',
+        submissionDate: new Date().toISOString(),
+      })
+    });
+    
+    // Handle response if needed
+    const data = await response.json();
+    console.log('Test results submitted:', data);
+    
+    // Add any response handling logic here
+  } catch (err) {
+    console.error('Error submitting test results:', err);
+    // Add error handling logic here
+  }
+};
   const renderProblemTab = () => {
     if (loading) {
       return (
@@ -186,18 +213,8 @@ const CompetitiveCodingPlatform = () => {
           <h1 className="text-2xl font-bold text-gray-400">
             {problem.number}. {problem.title}
           </h1>
-          <span
-            className={`px-3 py-1 rounded-full text-sm font-medium ${
-              problem.difficulty === 'Easy'
-                ? 'bg-green-100 text-green-800'
-                : problem.difficulty === 'Medium'
-                ? 'bg-yellow-100 text-yellow-800'
-                : 'bg-red-100 text-red-800'
-            }`}
-          >
-            {problem.difficulty}
-          </span>
-          <span className="text-sm text-gray-600">Acceptance: {problem.acceptance}</span>
+          
+         
         </div>
         <div className="space-y-6">
           <div>

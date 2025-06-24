@@ -382,7 +382,7 @@ const AdvancedFormMonitoringSystem = () => {
     exitFullScreen();
     setIsTestMode(false);
     await submitResults();
-    navigate('/coding');
+    navigate('/round1');
   };
 
   // Event listeners

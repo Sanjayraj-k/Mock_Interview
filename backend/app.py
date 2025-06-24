@@ -6,6 +6,7 @@ from datetime import datetime
 import bcrypt
 import re
 from pytz import timezone
+import json
 
 app = Flask(__name__)
 # This allows your React app at localhost:5173 to communicate with your Flask server
@@ -287,6 +288,49 @@ def submit_results():
         }), 201
     except Exception as e:
         app.logger.error(f"Submit results error: {e}")
+        return jsonify({"error": "An internal server error occurred"}), 500
+@app.route('/api/round2/results', methods=['POST'])
+def submit_round2_results():
+    """Stores round 2 results for a candidate."""
+    try:
+        data = request.get_json()
+        candidate_data = data.get("candidate")
+        score = data.get("score")
+        candidateId =data.get("candidateId")
+        candidateName =data.get("candidateName")
+        candidateEmail=data.get("candidateEmail")
+        candidateRoll=data.get("candidateRoll")
+        CandidateRollno=data.get("CandidateRollno")
+        submissionDate= data.get("submissionDate")
+        score = data.get("score")
+        totalscore = data.get("totalScore")
+
+        # Validate required fields
+        
+
+        # Prepare round 2 result document
+        round2_result = {
+            "candidateId": candidateId,
+           
+            "candidateEmail": candidateEmail,
+            "candidateRoll": candidateRoll,
+            "CandidateRollno": CandidateRollno,
+            "submissionDate": submissionDate,
+            "round": 2,
+            "score": totalscore,
+            "submittedAt": datetime.utcnow()
+        }
+
+        # Insert into round2_results collection
+        result = db.quiz_results.insert_one(round2_result)
+        round2_result['_id'] = str(result.inserted_id)
+
+        return jsonify({
+            "message": "Round 2 results stored successfully",
+            "round2_result": round2_result
+        }), 201
+    except Exception as e:
+        app.logger.error(f"Submit round 2 results error: {e}")
         return jsonify({"error": "An internal server error occurred"}), 500
 
 if __name__ == '__main__':
