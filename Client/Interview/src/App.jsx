@@ -13,7 +13,9 @@ import GoogleFormWithWebcam from './pages/GoogleForm.jsx';
 import WebCam from './pages/webCam.jsx'; // Adjusted extension for consistency
 import CodingPage from './pages/Codingpage.jsx';
 import Co from './pages/co.jsx'; 
-import Round1 from './pages/Round1.jsx'; // Adjusted import for clarity
+import Round1 from './pages/Round1.jsx';
+import Interview from './pages/Interview.jsx'; // Assuming this is the interview page
+// Adjusted import for clarity
 // Assuming this is the code editor page
 // Protected Route for HR
 const ProtectedHRRoute = ({ children }) => {
@@ -110,10 +112,11 @@ function App() {
               <CodingPage/>
               </ProtectedCandidateRoute>
             }/>
-
+            <Route path="/interview" element={<Interview/>}/>
             {/* 5. Fallback Route - Redirects any unknown URL to the landing page */}
             <Route path="*" element={<Navigate to="/" replace />} />
           </Routes>
+
         </div>
       </Router>
     </AuthProvider>
