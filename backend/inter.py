@@ -79,7 +79,7 @@ core_subject_prompt = PromptTemplate(
 )
 evaluation_prompt = PromptTemplate(
     input_variables=["history"],
-    template="""Based on the history: {history}, evaluate the candidate's responses. Summarize strengths and weaknesses, assign a mark out of 60, and justify the score. Format:\nEvaluation Summary\nStrengths: ...\nWeaknesses: ...\nFinal Mark: .../60\nJustification: ..."""
+    template="""Based on the history: {history}, evaluate the candidate's responses. Summarize strengths and weaknesses, assign a mark out of 50, and justify the score. Format:\nEvaluation Summary\nStrengths: ...\nWeaknesses: ...\nFinal Mark: .../50\nJustification: ..."""
 )
 
 def get_memory():
@@ -335,5 +335,39 @@ def end_exam():
         logger.error(f"Error in /api/end-exam: {str(e)}")
         return jsonify({"error": str(e)}), 500
 
+@app.route('/api/health', methods=['GET'])
+def health_check():
+    """Health check endpoint"""
+    return jsonify({
+        "status": "healthy",
+        "groq_connected": bool(GROQ_API_KEY),
+        "opencv_loaded": bool(face_cascade and eye_cascade),
+        "active_sessions": len(memory_store)
+    }), 200
+
+@app.route('/api/reset-session', methods=['POST'])
+def reset_session():
+    """Reset current session data"""
+    try:
+        session_id = session.get('session_id')
+        if session_id:
+            if session_id in memory_store:
+                del memory_store[session_id]
+            if session_id in exam_states:
+                del exam_states[session_id]
+        session.clear()
+        logger.info("Session reset successfully")
+        return jsonify({"status": "Session reset successfully"}), 200
+    except Exception as e:
+        logger.error(f"Error in /api/reset-session: {str(e)}")
+        return jsonify({"error": str(e)}), 500
+
 if __name__ == "__main__":
-    app.run(debug=True, port=5000, use_reloader=False)
+    try:
+        logger.info("Flask server starting on port 5000...")
+        app.run(debug=True, port=5000, use_reloader=False)
+    except KeyboardInterrupt:
+        logger.info("Server stopped by user")
+    except Exception as e:
+        logger.error(f"Server error: {e}")
+        sys.exit(1)
