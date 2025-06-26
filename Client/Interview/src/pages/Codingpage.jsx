@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { Play, CheckCircle, XCircle, Clock, Trophy, Code, FileText, RefreshCw, Check } from 'lucide-react';
+import { useNavigate } from 'react-router-dom';
 
 const CompetitiveCodingPlatform = () => {
   const [activeTab, setActiveTab] = useState('problem');
@@ -15,6 +16,7 @@ const CompetitiveCodingPlatform = () => {
   const [scores, setScores] = useState({ 'gas-station': 0, 'candy': 0, 'longest-increasing-subsequence': 0 });
   const [showFinalScore, setShowFinalScore] = useState(false);
 
+  const navigate = useNavigate(); // Added navigate hook
   const API_BASE = 'http://localhost:3000';
 
   const languages = [
@@ -143,39 +145,42 @@ const CompetitiveCodingPlatform = () => {
     }
   };
 
-
   const totalScore = Object.values(scores).reduce((sum, score) => sum + score, 0);
   localStorage.setItem('score', JSON.stringify(scores));
   localStorage.setItem('totalScore', totalScore);
+
   const handleFinishTest = async () => {
-  setShowFinalScore(false);
-  try {
-    const candidateData = JSON.parse(localStorage.getItem('candidate')) || {};
-    const response = await fetch("http://localhost:5000/api/round2/results", {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        scores,
-        totalScore,
-        candidateId: candidateData.id,
-        candidateName: candidateData.name,
-        candidateEmail: candidateData.email,
-        candidateRoll: candidateData.role || 'candidate',
-        CandidateRollno: candidateData.rollNo || 'N/A',
-        submissionDate: new Date().toISOString(),
-      })
-    });
-    
-    // Handle response if needed
-    const data = await response.json();
-    console.log('Test results submitted:', data);
-    
-    // Add any response handling logic here
-  } catch (err) {
-    console.error('Error submitting test results:', err);
-    // Add error handling logic here
-  }
-};
+    setShowFinalScore(false);
+    try {
+      const candidateData = JSON.parse(localStorage.getItem('candidate')) || {};
+      const response = await fetch('http://localhost:5000/api/round2/results', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          scores,
+          totalScore,
+          candidateId: candidateData.id,
+          candidateName: candidateData.name,
+          candidateEmail: candidateData.email,
+          candidateRoll: candidateData.role || 'candidate',
+          CandidateRollno: candidateData.rollNo || 'N/A',
+          submissionDate: new Date().toISOString(),
+        }),
+      });
+
+      if (response.ok) {
+        const data = await response.json();
+        console.log('Test results submitted:', data);
+        navigate('/interview');
+      } else {
+        throw new Error('Failed to submit test results');
+      }
+    } catch (err) {
+      console.error('Error submitting test results:', err);
+      setError('Failed to submit test results: ' + err.message);
+    }
+  };
+
   const renderProblemTab = () => {
     if (loading) {
       return (
@@ -213,8 +218,6 @@ const CompetitiveCodingPlatform = () => {
           <h1 className="text-2xl font-bold text-gray-400">
             {problem.number}. {problem.title}
           </h1>
-          
-         
         </div>
         <div className="space-y-6">
           <div>
@@ -488,7 +491,7 @@ const CompetitiveCodingPlatform = () => {
                     <div className="w-3 h-3 bg-green-500 rounded-full"></div>
                   </div>
                   <span className="text-gray-400 text-sm">
-                    {language}.{language === 'python' ? 'py' : language === 'java' ? 'java' : language === 'cpp' ? 'cpp' : 'c, '}
+                    {language}.{language === 'python' ? 'py' : language === 'java' ? 'java' : language === 'cpp' ? 'cpp' : 'c'}
                   </span>
                 </div>
                 <div className="p-4">

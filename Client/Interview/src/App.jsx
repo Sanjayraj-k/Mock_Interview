@@ -113,8 +113,14 @@ function App() {
               <CodingPage/>
               </ProtectedCandidateRoute>
             }/>
-            <Route path="/interview" element={<Interview/>}/>
-            <Route path="/resumeupload" element={<Uploadpage/>}/>
+            
+            <Route path="/interview" element={
+              <ProtectedCandidateRoute>
+              <Interview/>
+              </ProtectedCandidateRoute>
+              
+            }/>
+            
             {/* 5. Fallback Route - Redirects any unknown URL to the landing page */}
             <Route path="*" element={<Navigate to="/" replace />} />
           </Routes>

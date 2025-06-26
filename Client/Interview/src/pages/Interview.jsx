@@ -40,7 +40,7 @@ const WebCam = () => {
   const streamRef = useRef(null);
   const intervalRef = useRef(null);
   
-  const apiUrl = 'http://localhost:5000/api';
+  const apiUrl = 'http://localhost:8000/api';
 
   const startProctoring = async () => {
     try {
@@ -174,7 +174,7 @@ export default function InterviewDashboard() {
   const [error, setError] = useState('');
   
   const recognitionRef = useRef(null);
-  const apiUrl = 'http://localhost:5000/api';
+  const apiUrl = 'http://localhost:8000/api';
 
   useEffect(() => {
     let timer;

@@ -530,8 +530,8 @@ if __name__ == "__main__":
         # Uncomment the line below to test mark extraction
         # test_mark_extraction()
         
-        logger.info("Flask server starting on port 5000...")
-        app.run(debug=True, port=5000, use_reloader=False)
+        logger.info("Flask server starting on port 8000...")
+        app.run(debug=True, port=8000, use_reloader=False)
     except KeyboardInterrupt:
         logger.info("Server stopped by user")
     except Exception as e:
