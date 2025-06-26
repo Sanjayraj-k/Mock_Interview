@@ -43,7 +43,7 @@ if not GROQ_API_KEY:
 
 # Initialize Groq LLM
 try:
-    llm = ChatGroq(model_name="llama3-70b-8192", groq_api_key=GROQ_API_KEY, temperature=0.7, max_tokens=100)
+    llm = ChatGroq(model_name="llama3-70b-8192", groq_api_key=GROQ_API_KEY, temperature=0.7, max_tokens=200)
     logger.info("Groq LLM initialized successfully")
 except Exception as e:
     logger.error(f"Error initializing Groq LLM: {str(e)}", exc_info=True)
@@ -69,17 +69,46 @@ intro_prompt = PromptTemplate(
     input_variables=["history"],
     template="""You are an AI interviewer. Based on the history: {history}, ask: 'Introduce yourself briefly, including your role in a recent project.' (1 question, 2 lines max)"""
 )
+
 project_prompt = PromptTemplate(
     input_variables=["history", "question_number"],
     template="""Based on the history: {history}, ask a concise question about the candidate's project (e.g., 'What was the purpose of your project?', 'What challenges did you face?'). This is project question {question_number} out of 2. Keep it 2-3 lines."""
 )
+
 core_subject_prompt = PromptTemplate(
     input_variables=["history", "question_number"],
     template="""Based on the history: {history}, ask a concise question on Computer Organization, Operating Systems, or Data Structures (e.g., 'Explain cache memory in CO.', 'What is deadlock in OS?', 'How does a binary search tree work?'). This is core subject question {question_number} out of 3. Keep it 2-3 lines."""
 )
+
+# Enhanced evaluation prompt with explicit mark format requirement
 evaluation_prompt = PromptTemplate(
     input_variables=["history"],
-    template="""Based on the history: {history}, evaluate the candidate's responses. Summarize strengths and weaknesses, assign a mark out of 50, and justify the score. Format:\nEvaluation Summary\nStrengths: ...\nWeaknesses: ...\nFinal Mark: .../50\nJustification: ..."""
+    template="""Based on the interview history: {history}, 
+
+Evaluate the candidate's responses comprehensively. Provide:
+
+1. EVALUATION SUMMARY
+2. STRENGTHS: List specific strengths observed
+3. WEAKNESSES: List areas for improvement  
+4. FINAL MARK: Assign a numerical score out of 50 (e.g., "35 out of 50" or "42/50")
+5. JUSTIFICATION: Explain the reasoning behind the score
+
+IMPORTANT: The final mark MUST be clearly stated as "X out of 50" or "X/50" format where X is the numerical score.
+
+Format your response exactly as:
+EVALUATION SUMMARY
+[Brief summary here]
+
+STRENGTHS:
+[List strengths here]
+
+WEAKNESSES: 
+[List weaknesses here]
+
+FINAL MARK: [Score] out of 50
+
+JUSTIFICATION:
+[Detailed justification here]"""
 )
 
 def get_memory():
@@ -90,25 +119,136 @@ def get_memory():
         logger.debug(f"Created new memory for session_id: {session_id}")
     return memory_store[session_id]
 
+def extract_and_format_mark(evaluation_text):
+    """
+    Extract mark from evaluation text and ensure proper formatting
+    """
+    # Patterns to match various mark formats
+    patterns = [
+        r'FINAL MARK[:\s]*(\d+)\s*out of\s*50',  # "FINAL MARK: 45 out of 50"
+        r'FINAL MARK[:\s]*(\d+)/50',              # "FINAL MARK: 45/50"  
+        r'Final Mark[:\s]*(\d+)\s*out of\s*50',  # "Final Mark: 45 out of 50"
+        r'Final Mark[:\s]*(\d+)/50',              # "Final Mark: 45/50"
+        r'mark[:\s]*(\d+)\s*out of\s*50',        # "mark: 45 out of 50"
+        r'mark[:\s]*(\d+)/50',                    # "mark: 45/50"
+        r'score[:\s]*(\d+)\s*out of\s*50',       # "score: 45 out of 50"
+        r'score[:\s]*(\d+)/50',                   # "score: 45/50"
+        r'(\d+)\s*out of\s*50',                  # "45 out of 50"
+        r'(\d+)/50',                             # "45/50"
+    ]
+    
+    for pattern in patterns:
+        match = re.search(pattern, evaluation_text, re.IGNORECASE)
+        if match:
+            score = int(match.group(1))
+            # Ensure score is within valid range
+            if 0 <= score <= 50:
+                return score
+    
+    return None
+
+def analyze_performance_for_score(evaluation_text):
+    """
+    Analyze evaluation text to assign a reasonable default score
+    """
+    text_lower = evaluation_text.lower()
+    
+    # Positive indicators
+    positive_words = ['excellent', 'good', 'strong', 'clear', 'demonstrates', 'understanding', 'well']
+    negative_words = ['poor', 'weak', 'lacks', 'insufficient', 'unclear', 'limited', 'needs improvement']
+    
+    positive_count = sum(1 for word in positive_words if word in text_lower)
+    negative_count = sum(1 for word in negative_words if word in text_lower)
+    
+    # Basic scoring logic
+    if positive_count > negative_count * 2:
+        return 42  # Good performance
+    elif positive_count > negative_count:
+        return 35  # Average performance  
+    else:
+        return 28  # Below average performance
+
+def format_evaluation_with_mark(evaluation_text):
+    """
+    Ensure evaluation contains properly formatted mark
+    """
+    score = extract_and_format_mark(evaluation_text)
+    
+    if score is not None:
+        # Replace any existing mark format with standardized format
+        formatted_mark = f"FINAL MARK: {score} out of 50"
+        
+        # Replace existing mark patterns
+        patterns_to_replace = [
+            r'FINAL MARK[:\s]*\d+[/\s]*(?:out of\s*)?50',
+            r'Final Mark[:\s]*\d+[/\s]*(?:out of\s*)?50',
+            r'mark[:\s]*\d+[/\s]*(?:out of\s*)?50',
+            r'score[:\s]*\d+[/\s]*(?:out of\s*)?50'
+        ]
+        
+        for pattern in patterns_to_replace:
+            evaluation_text = re.sub(pattern, formatted_mark, evaluation_text, flags=re.IGNORECASE)
+        
+        # If no existing pattern found, add the mark
+        if not re.search(r'FINAL MARK:', evaluation_text, re.IGNORECASE):
+            # Insert mark before justification if present
+            if 'JUSTIFICATION:' in evaluation_text.upper():
+                evaluation_text = evaluation_text.replace('JUSTIFICATION:', f'{formatted_mark}\n\nJUSTIFICATION:')
+            else:
+                evaluation_text += f'\n\n{formatted_mark}'
+    else:
+        # If no score found, add a default one based on content analysis
+        default_score = analyze_performance_for_score(evaluation_text)
+        formatted_mark = f"FINAL MARK: {default_score} out of 50"
+        evaluation_text += f'\n\n{formatted_mark}'
+    
+    return evaluation_text
+
 def clean_response(response):
-    return re.sub(r'\*\*|\*|_|\#', '', response).strip()
+    """
+    Clean response while preserving important formatting like marks
+    """
+    # Remove markdown formatting but preserve structure
+    cleaned = re.sub(r'\*\*|\*(?!\s*out\s*of)|\#', '', response)
+    
+    # Preserve "out of" phrases which might contain marks
+    cleaned = re.sub(r'_(?!.*out.*of)', '', cleaned)
+    
+    return cleaned.strip()
 
 def _generate_evaluation_and_cleanup(memory):
+    """
+    Generate evaluation with guaranteed mark display
+    """
     history = memory.buffer_as_str
     if not history.strip():
-        return {"evaluation": "No answers provided. No evaluation possible.", "status": "evaluation"}
-    evaluation_chain = LLMChain(llm=llm, prompt=evaluation_prompt)
-    evaluation = evaluation_chain.run(history=history)
-    session_id = session.get('session_id')
-    if session_id:
-        if session_id in memory_store:
-            del memory_store[session_id]
-            logger.info(f"Memory cleared for session {session_id}")
-        if session_id in exam_states:
-            del exam_states[session_id]
-            logger.info(f"Exam state cleared for session {session_id}")
-    session.clear()
-    return {"evaluation": clean_response(evaluation), "status": "evaluation"}
+        return {"evaluation": "No answers provided. No evaluation possible.\n\nFINAL MARK: 0 out of 50", "status": "evaluation"}
+    
+    try:
+        evaluation_chain = LLMChain(llm=llm, prompt=evaluation_prompt)
+        evaluation = evaluation_chain.run(history=history)
+        
+        # Clean and format the evaluation
+        cleaned_evaluation = clean_response(evaluation)
+        formatted_evaluation = format_evaluation_with_mark(cleaned_evaluation)
+        
+        # Cleanup session data
+        session_id = session.get('session_id')
+        if session_id:
+            if session_id in memory_store:
+                del memory_store[session_id]
+                logger.info(f"Memory cleared for session {session_id}")
+            if session_id in exam_states:
+                del exam_states[session_id]
+                logger.info(f"Exam state cleared for session {session_id}")
+        session.clear()
+        
+        logger.info("Evaluation generated successfully with mark")
+        return {"evaluation": formatted_evaluation, "status": "evaluation"}
+        
+    except Exception as e:
+        logger.error(f"Error generating evaluation: {str(e)}")
+        return {"evaluation": f"Error generating evaluation: {str(e)}\n\nFINAL MARK: 0 out of 50", "status": "evaluation"}
 
 # === PROCTORING SECTION ===
 exam_states = {}
@@ -362,8 +502,34 @@ def reset_session():
         logger.error(f"Error in /api/reset-session: {str(e)}")
         return jsonify({"error": str(e)}), 500
 
+# Test function to verify mark extraction (for debugging)
+def test_mark_extraction():
+    """
+    Test function to verify mark extraction works correctly
+    """
+    test_cases = [
+        "FINAL MARK: 45 out of 50",
+        "Final Mark: 38/50", 
+        "The candidate scored 42 out of 50",
+        "Overall mark 35/50",
+        "Evaluation shows good performance with a score of 40 out of 50",
+        "Strengths: Good knowledge\nWeaknesses: Some gaps\nJustification: Overall decent performance"  # No mark case
+    ]
+    
+    print("Testing mark extraction:")
+    for test in test_cases:
+        score = extract_and_format_mark(test)
+        formatted = format_evaluation_with_mark(test)
+        print(f"Original: '{test[:50]}...'")
+        print(f"Extracted Score: {score}")
+        print(f"Formatted: {formatted}")
+        print("-" * 50)
+
 if __name__ == "__main__":
     try:
+        # Uncomment the line below to test mark extraction
+        # test_mark_extraction()
+        
         logger.info("Flask server starting on port 5000...")
         app.run(debug=True, port=5000, use_reloader=False)
     except KeyboardInterrupt:
