@@ -15,6 +15,7 @@ import CodingPage from './pages/Codingpage.jsx';
 import Co from './pages/co.jsx'; 
 import Round1 from './pages/Round1.jsx';
 import Interview from './pages/Interview.jsx'; // Assuming this is the interview page
+import Uploadpage from './pages/Uploadresumepage.jsx'; // Adjusted import for clarity
 // Adjusted import for clarity
 // Assuming this is the code editor page
 // Protected Route for HR
@@ -113,6 +114,7 @@ function App() {
               </ProtectedCandidateRoute>
             }/>
             <Route path="/interview" element={<Interview/>}/>
+            <Route path="/resumeupload" element={<Uploadpage/>}/>
             {/* 5. Fallback Route - Redirects any unknown URL to the landing page */}
             <Route path="*" element={<Navigate to="/" replace />} />
           </Routes>

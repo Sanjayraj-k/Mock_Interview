@@ -247,4 +247,4 @@ def end_exam():
 if __name__ == '__main__':
     reset_exam_state() # Initialize state on startup
     # use_reloader=False is important for avoiding issues with global state in debug mode
-    app.run(host='0.0.0.0', port=4000, debug=True, use_reloader=False)
+    app.run(host='0.0.0.0', port=5000, debug=True, use_reloader=False)

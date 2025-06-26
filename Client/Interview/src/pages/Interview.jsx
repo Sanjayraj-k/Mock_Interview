@@ -5,15 +5,16 @@ import {
   Volume2, 
   Mic, 
   MicOff, 
-  Play, 
   CheckCircle, 
   Flag,
   AlertCircle,
   AlertTriangle,
-  X,
   Clock,
   Zap,
-  Shield
+  Shield,
+  Send,
+  Play,
+  Pause
 } from 'lucide-react';
 
 // ====================================================================
@@ -30,30 +31,20 @@ const WebCam = () => {
     violation_detected: false,
     look_direction: 'Unknown',
     eyes_closed: false,
-    blink_duration: 0,
     long_blink_count: 0,
-    head_pose: [0, 0, 0],
-    ear: 0,
   });
   const [error, setError] = useState(null);
   const videoRef = useRef(null);
   const canvasRef = useRef(null);
   const streamRef = useRef(null);
   const intervalRef = useRef(null);
-  const apiUrl = 'http://localhost:4000';
+  
+  // Updated to match your backend URL
+  const apiUrl = 'http://localhost:5000/api';
 
   const startProctoring = async () => {
     try {
       setError(null);
-      
-      const startResponse = await fetch(`${apiUrl}/start-exam`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-      });
-
-      if (!startResponse.ok) {
-        throw new Error(`Failed to start exam session: ${startResponse.statusText}`);
-      }
       
       const stream = await navigator.mediaDevices.getUserMedia({
         video: { width: 640, height: 480 },
@@ -68,7 +59,7 @@ const WebCam = () => {
       startFrameProcessing();
       setIsActive(true);
     } catch (err) {
-      const errorMessage = `Proctoring failed to start: ${err.message}. Check camera permissions and ensure the proctoring server is running.`;
+      const errorMessage = `Proctoring failed to start: ${err.message}. Check camera permissions.`;
       setError(errorMessage);
       console.error('Error in startProctoring:', err);
       stopProctoring();
@@ -115,7 +106,10 @@ const WebCam = () => {
     try {
       const response = await fetch(`${apiUrl}/process-frame`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 
+          'Content-Type': 'application/json'
+        },
+        credentials: 'include', // Important for session management
         body: JSON.stringify({ image: imageData.split(',')[1] }),
       });
 
@@ -148,13 +142,6 @@ const WebCam = () => {
       return <CheckCircle size={20} className="text-emerald-400" />;
     }
     return <AlertTriangle size={20} className="text-amber-400" />;
-  };
-
-  const getStatusColorClass = () => {
-    if (proctorData.violation_detected) return "text-red-400";
-    if (!proctorData.face_detected) return "text-amber-400";
-    if (proctorData.looking_at_screen) return "text-emerald-400";
-    return "text-amber-400";
   };
   
   return (
@@ -257,6 +244,13 @@ const WebCam = () => {
                 </span>
               </div>
             </div>
+
+            <div className="mt-3 p-3 bg-white rounded-lg border border-gray-100">
+              <div className="flex items-center justify-between">
+                <span className="text-gray-600 text-sm">Look Direction</span>
+                <span className="font-medium text-gray-900 text-sm">{proctorData.look_direction}</span>
+              </div>
+            </div>
           </div>
         </div>
       </div>
@@ -265,36 +259,40 @@ const WebCam = () => {
 };
 
 // ====================================================================
-//  Main SpeechToTextDashboard Component
+//  Main Interview Component - Integrated with Backend
 // ====================================================================
 
-export default function SpeechToTextDashboard() {
-  const [activeQuestion, setActiveQuestion] = useState(1);
+export default function InterviewDashboard() {
+  const [currentQuestion, setCurrentQuestion] = useState('');
+  const [questionStatus, setQuestionStatus] = useState(''); // 'intro', 'project', 'evaluation'
+  const [questionNumber, setQuestionNumber] = useState(0);
   const [isListening, setIsListening] = useState(false);
   const [transcript, setTranscript] = useState('');
   const [isSpeaking, setIsSpeaking] = useState(false);
-  const [answers, setAnswers] = useState({});
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [examFinished, setExamFinished] = useState(false);
   const [timeElapsed, setTimeElapsed] = useState(0);
+  const [interviewStarted, setInterviewStarted] = useState(false);
+  const [evaluation, setEvaluation] = useState('');
+  const [error, setError] = useState('');
   
   const recognitionRef = useRef(null);
-
-  const questions = [
-    { id: 1, title: "Question #1", content: "Describe your experience with React.js, highlighting any specific projects or components you've developed." },
-    { id: 2, title: "Question #2", content: "How do you handle state management in complex React applications?" },
-    { id: 3, title: "Question #3", content: "Explain your approach to testing React components and applications." },
-    { id: 4, title: "Question #4", content: "What strategies do you use for optimizing React application performance?" },
-    { id: 5, title: "Question #5", content: "How do you ensure accessibility in your React applications?" },
-  ];
+  
+  // Updated to match your backend URL
+  const apiUrl = 'http://localhost:5000/api';
 
   // Timer effect
   useEffect(() => {
-    const timer = setInterval(() => {
-      setTimeElapsed(prev => prev + 1);
-    }, 1000);
-    return () => clearInterval(timer);
-  }, []);
+    let timer;
+    if (interviewStarted && !examFinished) {
+      timer = setInterval(() => {
+        setTimeElapsed(prev => prev + 1);
+      }, 1000);
+    }
+    return () => {
+      if (timer) clearInterval(timer);
+    };
+  }, [interviewStarted, examFinished]);
 
   const formatTime = (seconds) => {
     const mins = Math.floor(seconds / 60);
@@ -302,32 +300,132 @@ export default function SpeechToTextDashboard() {
     return `${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
   };
 
-  const speakQuestion = () => {
+  // Start interview - calls backend /api/start
+  const startInterview = async () => {
+    try {
+      setError('');
+      const response = await fetch(`${apiUrl}/start`, {
+        method: 'GET',
+        credentials: 'include',
+      });
+
+      if (!response.ok) {
+        throw new Error(`Failed to start interview: ${response.statusText}`);
+      }
+
+      const data = await response.json();
+      setCurrentQuestion(data.question);
+      setQuestionStatus(data.status);
+      setQuestionNumber(data.question_number);
+      setInterviewStarted(true);
+      
+      // Speak the first question
+      speakText(data.question);
+    } catch (err) {
+      setError(`Failed to start interview: ${err.message}`);
+      console.error('Error starting interview:', err);
+    }
+  };
+
+  // Submit answer - calls backend /api/submit
+  const submitAnswer = async () => {
+    const finalTranscript = transcript.trim().replace(/\[.*?\]/g, '').trim();
+    if (!finalTranscript) {
+      alert('Please provide an answer before submitting.');
+      return;
+    }
+
+    setIsSubmitting(true);
+    setError('');
+    
+    try {
+      const response = await fetch(`${apiUrl}/submit`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        credentials: 'include',
+        body: JSON.stringify({ answer: finalTranscript }),
+      });
+
+      if (!response.ok) {
+        throw new Error(`Failed to submit answer: ${response.statusText}`);
+      }
+
+      const data = await response.json();
+      
+      if (data.status === 'evaluation') {
+        // Interview completed
+        setEvaluation(data.evaluation);
+        setExamFinished(true);
+        
+        // End exam session
+        await endExamSession();
+      } else {
+        // Next question
+        setCurrentQuestion(data.question);
+        setQuestionStatus(data.status);
+        setQuestionNumber(data.question_number);
+        setTranscript('');
+        
+        // Speak the next question
+        speakText(data.question);
+      }
+    } catch (err) {
+      setError(`Failed to submit answer: ${err.message}`);
+      console.error('Error submitting answer:', err);
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
+  // End exam session - calls backend /api/end-exam
+  const endExamSession = async () => {
+    try {
+      await fetch(`${apiUrl}/end-exam`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        credentials: 'include',
+        body: JSON.stringify({ 
+          timeElapsed,
+          completed: true 
+        }),
+      });
+    } catch (err) {
+      console.error('Error ending exam session:', err);
+    }
+  };
+
+  // Text-to-speech functionality
+  const speakText = (text) => {
     if ('speechSynthesis' in window) {
-      const currentQuestion = questions.find(q => q.id === activeQuestion);
-      if (currentQuestion && !isSpeaking) {
-        setIsSpeaking(true);
-        const utterance = new SpeechSynthesisUtterance(currentQuestion.content);
-        utterance.rate = 0.9;
-        utterance.pitch = 1;
-        utterance.volume = 1;
-        
-        utterance.onend = () => setIsSpeaking(false);
-        utterance.onerror = () => setIsSpeaking(false);
-        
-        window.speechSynthesis.speak(utterance);
-      } else if (isSpeaking) {
+      if (isSpeaking) {
         window.speechSynthesis.cancel();
         setIsSpeaking(false);
+        return;
       }
+      
+      setIsSpeaking(true);
+      const utterance = new SpeechSynthesisUtterance(text);
+      utterance.rate = 0.9;
+      utterance.pitch = 1;
+      utterance.volume = 1;
+      
+      utterance.onend = () => setIsSpeaking(false);
+      utterance.onerror = () => setIsSpeaking(false);
+      
+      window.speechSynthesis.speak(utterance);
     } else {
       alert('Speech synthesis not supported in this browser.');
     }
   };
 
+  // Speech recognition setup
   useEffect(() => {
     if (!('webkitSpeechRecognition' in window) && !('SpeechRecognition' in window)) {
-      alert('Speech recognition not supported in this browser. Please use Chrome or another supported browser.');
+      setError('Speech recognition not supported in this browser. Please use Chrome.');
       return;
     }
 
@@ -342,6 +440,7 @@ export default function SpeechToTextDashboard() {
     recognition.onresult = (event) => {
       let finalTranscript = '';
       let interimTranscript = '';
+      let currentTranscript = transcript.replace(/\[.*?\]/g, '').trim();
 
       for (let i = event.resultIndex; i < event.results.length; i++) {
         const transcriptPart = event.results[i][0].transcript;
@@ -351,7 +450,8 @@ export default function SpeechToTextDashboard() {
           interimTranscript += transcriptPart;
         }
       }
-      setTranscript(prev => (prev + finalTranscript).replace(/\[.*?\]/g, '') + ` ${interimTranscript}`);
+      
+      setTranscript(currentTranscript + (currentTranscript ? ' ' : '') + finalTranscript + (interimTranscript ? `[${interimTranscript}]` : ''));
     };
 
     recognition.onerror = (event) => {
@@ -365,9 +465,11 @@ export default function SpeechToTextDashboard() {
     };
 
     return () => {
-      recognition.stop();
+      if (recognition) {
+        recognition.stop();
+      }
     };
-  }, []);
+  }, [transcript]); // Added transcript to dependency array for correct concatenation
 
   const toggleSpeechRecognition = () => {
     if (isListening) {
@@ -375,70 +477,6 @@ export default function SpeechToTextDashboard() {
     } else {
       recognitionRef.current?.start();
       setIsListening(true);
-    }
-  };
-
-  const submitAnswer = async () => {
-    const finalTranscript = transcript.replace(/\[.*?\]/g, '').trim();
-    if (!finalTranscript) {
-      alert('Please provide an answer before submitting.');
-      return;
-    }
-
-    setIsSubmitting(true);
-    
-    setAnswers(prev => ({
-      ...prev,
-      [activeQuestion]: finalTranscript
-    }));
-    
-    await new Promise(resolve => setTimeout(resolve, 500)); 
-    
-    if (activeQuestion < questions.length) {
-      setActiveQuestion(activeQuestion + 1);
-      setTranscript('');
-    } else {
-      alert('All questions completed! Click "Finish Exam" to submit your exam.');
-    }
-    
-    setIsSubmitting(false);
-  };
-
-  const finishExam = async () => {
-    const answeredCount = Object.keys(answers).length;
-    if (answeredCount < questions.length) {
-      const unanswered = questions.length - answeredCount;
-      if (!confirm(`You have ${unanswered} unanswered question(s). Are you sure you want to finish the exam?`)) {
-        return;
-      }
-    }
-
-    if (!confirm('Are you sure you want to finish and submit your exam? This action cannot be undone.')) {
-      return;
-    }
-
-    setIsSubmitting(true);
-    
-    try {
-      const response = await fetch('http://localhost:4000/end-exam', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ answers, totalQuestions: questions.length })
-      });
-      
-      if (response.ok) {
-        setExamFinished(true);
-        recognitionRef.current?.stop();
-        window.speechSynthesis.cancel();
-        alert('Exam submitted successfully!');
-      } else {
-        throw new Error('Failed to submit exam to the server.');
-      }
-    } catch (error) {
-      console.error('Error finishing exam:', error);
-      alert('Error submitting exam. Please try again.');
-    } finally {
-      setIsSubmitting(false);
     }
   };
 
@@ -452,46 +490,102 @@ export default function SpeechToTextDashboard() {
     };
   }, []);
 
+  // Evaluation display
   if (examFinished) {
     return (
       <div className="min-h-screen bg-gradient-to-br from-indigo-50 via-white to-purple-50 flex items-center justify-center p-4">
-        <div className="bg-white/80 backdrop-blur-sm rounded-3xl shadow-2xl p-8 text-center max-w-md border border-white/20">
-          <div className="relative">
-            <CheckCircle className="w-20 h-20 text-emerald-500 mx-auto mb-6" />
-            <div className="absolute inset-0 animate-ping">
-              <CheckCircle className="w-20 h-20 text-emerald-300 mx-auto opacity-30" />
+        <div className="bg-white/80 backdrop-blur-sm rounded-3xl shadow-2xl p-8 max-w-2xl border border-white/20">
+          <div className="text-center mb-6">
+            <div className="relative">
+              <CheckCircle className="w-20 h-20 text-emerald-500 mx-auto mb-6" />
+              <div className="absolute inset-0 animate-ping">
+                <CheckCircle className="w-20 h-20 text-emerald-300 mx-auto opacity-30" />
+              </div>
             </div>
-          </div>
-          <h2 className="text-3xl font-bold bg-gradient-to-r from-emerald-600 to-teal-600 bg-clip-text text-transparent mb-3">
-            Exam Completed!
-          </h2>
-          <p className="text-gray-600 mb-6 leading-relaxed">
-            Your exam has been submitted successfully. You can now close this window.
-          </p>
-          <div className="bg-gradient-to-r from-emerald-50 to-teal-50 rounded-xl p-4 border border-emerald-100">
-            <div className="text-emerald-700 font-semibold">
-              Questions Answered: {Object.keys(answers).length}/{questions.length}
-            </div>
-            <div className="text-emerald-600 text-sm mt-1">
+            <h2 className="text-3xl font-bold bg-gradient-to-r from-emerald-600 to-teal-600 bg-clip-text text-transparent mb-3">
+              Interview Completed!
+            </h2>
+            <div className="text-emerald-600 text-sm">
               Time Taken: {formatTime(timeElapsed)}
             </div>
           </div>
+          
+          {evaluation && (
+            <div className="bg-gradient-to-r from-gray-50 to-white rounded-xl p-6 border border-gray-100 text-left">
+              <h3 className="text-lg font-semibold mb-4 text-gray-900">Your Evaluation</h3>
+              <div className="whitespace-pre-wrap text-gray-700 leading-relaxed">
+                {evaluation}
+              </div>
+            </div>
+          )}
         </div>
       </div>
     );
   }
 
+  // Start screen
+  if (!interviewStarted) {
+    return (
+      <div className="min-h-screen bg-gradient-to-br from-indigo-50 via-white to-purple-50 flex items-center justify-center p-4">
+        <div className="bg-white/80 backdrop-blur-sm rounded-3xl shadow-2xl p-8 max-w-2xl text-center border border-white/20">
+          <div className="mb-6">
+            <Zap className="w-16 h-16 text-indigo-600 mx-auto mb-4" />
+            <h1 className="text-3xl font-bold bg-gradient-to-r from-indigo-900 to-purple-900 bg-clip-text text-transparent mb-3">
+              AI Interview Assistant
+            </h1>
+            <p className="text-gray-600 leading-relaxed">
+              Welcome to your AI-powered interview session. This system will ask you questions about your background and projects, with real-time proctoring to ensure exam integrity.
+            </p>
+          </div>
+
+          {error && (
+            <div className="mb-6 p-4 bg-red-50 border border-red-200 rounded-xl">
+              <div className="flex items-center text-red-700 justify-center">
+                <AlertCircle className="mr-3 w-5 h-5" />
+                <p className="text-sm">{error}</p>
+              </div>
+            </div>
+          )}
+
+          <div className="space-y-4 mb-6">
+            <div className="flex items-center justify-center gap-2 text-gray-600">
+              <Camera className="w-5 h-5" />
+              <span>Camera access required for proctoring</span>
+            </div>
+            <div className="flex items-center justify-center gap-2 text-gray-600">
+              <Mic className="w-5 h-5" />
+              <span>Microphone access required for voice responses</span>
+            </div>
+            <div className="flex items-center justify-center gap-2 text-gray-600">
+              <Volume2 className="w-5 h-5" />
+              <span>Audio enabled for question narration</span>
+            </div>
+          </div>
+
+          <button
+            onClick={startInterview}
+            className="px-8 py-4 bg-gradient-to-r from-indigo-500 to-purple-500 text-white rounded-xl font-medium hover:scale-105 transition-all duration-200 shadow-lg shadow-indigo-500/25"
+          >
+            <Play className="w-5 h-5 inline mr-2" />
+            Start Interview
+          </button>
+        </div>
+      </div>
+    );
+  }
+
+  // Main interview interface
   return (
     <div className="min-h-screen bg-gradient-to-br from-indigo-50 via-white to-purple-50">
       {/* Header */}
-      <div className="bg-white/80 backdrop-blur-sm border-b border-gray-200/50 sticky top-0 z-10">
+      <header className="bg-white/80 backdrop-blur-sm border-b border-gray-200/50 sticky top-0 z-20">
         <div className="max-w-7xl mx-auto px-6 py-4">
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-4">
               <div className="flex items-center gap-2">
                 <Zap className="w-8 h-8 text-indigo-600" />
                 <h1 className="text-2xl font-bold bg-gradient-to-r from-indigo-900 to-purple-900 bg-clip-text text-transparent">
-                  Voice Exam
+                  AI Interview
                 </h1>
               </div>
               <div className="hidden sm:flex items-center gap-2 px-3 py-1 bg-indigo-100 rounded-full">
@@ -501,83 +595,59 @@ export default function SpeechToTextDashboard() {
             </div>
             <div className="flex items-center gap-3">
               <div className="text-sm text-gray-600">
-                {Object.keys(answers).length}/{questions.length} Completed
+                {questionStatus === 'intro' ? 'Introduction' : questionStatus === 'project' ? 'Project Discussion' : 'Evaluation'}
               </div>
-              <div className="w-32 bg-gray-200 rounded-full h-2">
-                <div 
-                  className="bg-gradient-to-r from-indigo-500 to-purple-500 h-2 rounded-full transition-all duration-300"
-                  style={{ width: `${(Object.keys(answers).length / questions.length) * 100}%` }}
-                ></div>
+              <div className="px-3 py-1 bg-blue-100 text-blue-700 rounded-full text-sm font-medium">
+                Question {questionNumber}
               </div>
             </div>
           </div>
         </div>
-      </div>
+      </header>
 
-      <div className="max-w-7xl mx-auto p-6">
+      <main className="max-w-7xl mx-auto p-6">
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
-          {/* Main Content */}
+          
+          {/* Left Column: Main Content */}
           <div className="lg:col-span-2 space-y-6">
-            {/* Question Navigation */}
-            <div className="bg-white/80 backdrop-blur-sm rounded-2xl p-6 border border-gray-200/50 shadow-lg">
-              <div className="flex flex-wrap gap-3 mb-6">
-                {questions.map((q) => (
-                  <button
-                    key={q.id}
-                    onClick={() => setActiveQuestion(q.id)}
-                    disabled={!answers[q.id - 1] && q.id > activeQuestion}
-                    className={`relative px-4 py-2 rounded-xl text-sm font-medium transition-all duration-200 ${
-                      activeQuestion === q.id
-                        ? 'bg-gradient-to-r from-indigo-500 to-purple-500 text-white shadow-lg shadow-indigo-500/25 scale-105'
-                        : answers[q.id]
-                        ? 'bg-gradient-to-r from-emerald-100 to-teal-100 text-emerald-700 hover:from-emerald-200 hover:to-teal-200'
-                        : 'bg-gray-100 text-gray-400 cursor-not-allowed'
-                    }`}
-                  >
-                    {`Q${q.id}`}
-                    {answers[q.id] && (
-                      <CheckCircle className="w-4 h-4 absolute -top-1 -right-1 text-emerald-500 bg-white rounded-full" />
-                    )}
-                  </button>
-                ))}
-              </div>
-
-              {/* Current Question */}
-              <div className="bg-gradient-to-r from-indigo-50 to-purple-50 rounded-xl p-6 border border-indigo-100">
-                <div className="flex items-start justify-between mb-4">
-                  <div className="flex-1">
-                    <div className="flex items-center gap-2 mb-2">
-                      <span className="text-sm font-medium text-indigo-600">Question {activeQuestion}</span>
-                      <span className="text-xs text-gray-500">of {questions.length}</span>
-                    </div>
-                    <h2 className="text-lg font-semibold text-gray-900 leading-relaxed">
-                      {questions.find(q => q.id === activeQuestion)?.content}
-                    </h2>
+            {/* Current Question */}
+            <section className="bg-white/80 backdrop-blur-sm rounded-2xl p-6 border border-gray-200/50 shadow-lg">
+              <div className="flex items-start justify-between mb-4">
+                <div className="flex-1">
+                  <div className="flex items-center gap-2 mb-2">
+                    <span className="text-sm font-medium text-indigo-600">
+                      {questionStatus === 'intro' ? 'Introduction Phase' : 
+                       questionStatus === 'project' ? 'Project Discussion' : 'Evaluation'}
+                    </span>
+                    <span className="text-xs text-gray-500">Question {questionNumber}</span>
                   </div>
-                  <button
-                    onClick={speakQuestion}
-                    disabled={isSpeaking}
-                    className={`ml-4 p-3 rounded-xl transition-all duration-200 ${
-                      isSpeaking 
-                        ? 'bg-gradient-to-r from-emerald-100 to-teal-100 text-emerald-600 scale-105' 
-                        : 'bg-white hover:bg-gray-50 text-gray-600 hover:scale-105'
-                    } shadow-md border border-gray-200`}
-                    title="Read question aloud"
-                  >
-                    <Volume2 className={`w-5 h-5 ${isSpeaking ? 'animate-pulse' : ''}`} />
-                  </button>
+                  <h2 className="text-lg font-semibold text-gray-900 leading-relaxed">
+                    {currentQuestion}
+                  </h2>
                 </div>
+                <button
+                  onClick={() => speakText(currentQuestion)}
+                  disabled={isSpeaking}
+                  className={`ml-4 p-3 rounded-xl transition-all duration-200 ${
+                    isSpeaking 
+                      ? 'bg-gradient-to-r from-emerald-100 to-teal-100 text-emerald-600 scale-105' 
+                      : 'bg-white hover:bg-gray-50 text-gray-600 hover:scale-105'
+                  } shadow-md border border-gray-200`}
+                  title="Read question aloud"
+                >
+                  {isSpeaking ? <Pause className="w-5 h-5" /> : <Volume2 className="w-5 h-5" />}
+                </button>
               </div>
-            </div>
+            </section>
 
             {/* Answer Section */}
-            <div className="bg-white/80 backdrop-blur-sm rounded-2xl p-6 border border-gray-200/50 shadow-lg">
+            <section className="bg-white/80 backdrop-blur-sm rounded-2xl p-6 border border-gray-200/50 shadow-lg">
               <div className="flex items-center justify-between mb-6">
                 <h3 className="text-lg font-semibold text-gray-900">Your Answer</h3>
                 <div className="flex gap-3">
                   <button
                     onClick={toggleSpeechRecognition}
-                    disabled={examFinished}
+                    disabled={examFinished || isSubmitting}
                     className={`flex items-center gap-2 px-4 py-2 rounded-xl transition-all duration-200 text-white font-medium ${
                       isListening 
                         ? 'bg-gradient-to-r from-red-500 to-pink-500 shadow-lg shadow-red-500/25 scale-105' 
@@ -587,19 +657,12 @@ export default function SpeechToTextDashboard() {
                     {isListening ? <MicOff className="w-4 h-4" /> : <Mic className="w-4 h-4" />}
                     {isListening ? 'Stop Recording' : 'Start Recording'}
                   </button>
-                  <button
-                    onClick={clearTranscript}
-                    disabled={examFinished || !transcript}
-                    className="px-4 py-2 bg-gradient-to-r from-gray-400 to-gray-500 hover:from-gray-500 hover:to-gray-600 text-white rounded-xl transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed hover:scale-105 shadow-md"
-                  >
-                    Clear
-                  </button>
                 </div>
               </div>
 
               {/* Transcript Area */}
               <div className="relative">
-                <div className="min-h-[200px] bg-gradient-to-br from-gray-50 to-white rounded-xl p-6 border-2 border-dashed border-gray-200 overflow-y-auto">
+                <div className="min-h-[250px] bg-gradient-to-br from-gray-50 to-white rounded-xl p-6 border-2 border-dashed border-gray-200 overflow-y-auto">
                   {transcript ? (
                     <div className="space-y-2">
                       <p className="text-gray-900 whitespace-pre-wrap leading-relaxed">
@@ -611,7 +674,7 @@ export default function SpeechToTextDashboard() {
                       </div>
                     </div>
                   ) : (
-                    <div className="text-center text-gray-500 flex flex-col items-center justify-center h-full">
+                    <div className="text-center text-gray-500 flex flex-col items-center justify-center h-full pt-8 pb-8">
                       <div className="relative mb-4">
                         <Mic className="w-16 h-16 mx-auto text-gray-300" />
                         {isListening && (
@@ -627,112 +690,38 @@ export default function SpeechToTextDashboard() {
                 </div>
 
                 {isListening && (
-                  <div className="absolute top-4 right-4 flex items-center gap-2 bg-red-500 text-white px-3 py-1 rounded-full text-sm font-medium">
-                    <div className="w-2 h-2 bg-white rounded-full animate-pulse"></div>
-                    Recording...
+                  <div className="absolute top-4 right-4 flex items-center gap-2 bg-red-500 text-white px-3 py-1 rounded-full text-sm font-medium animate-pulse">
+                    <div className="w-2 h-2 bg-white rounded-full"></div>
+                    Recording
                   </div>
                 )}
               </div>
-
-              {/* Action Buttons */}
-              <div className="flex gap-4 mt-6">
+              <div className="flex justify-end gap-4 mt-6">
                 <button
-                  onClick={submitAnswer}
-                  disabled={isSubmitting || examFinished || !transcript.trim().replace(/\[.*?\]/g, '')}
-                  className="flex-1 flex items-center justify-center gap-2 px-6 py-3 rounded-xl font-medium transition-all duration-200 bg-gradient-to-r from-emerald-500 to-teal-500 hover:from-emerald-600 hover:to-teal-600 text-white shadow-lg shadow-emerald-500/25 disabled:opacity-50 disabled:cursor-not-allowed hover:scale-105 disabled:hover:scale-100"
-                >
-                  <CheckCircle className="w-5 h-5" />
-                  {isSubmitting ? 'Submitting...' : `Submit Answer${activeQuestion < questions.length ? ' & Next' : ''}`}
-                </button>
-                
+                    onClick={clearTranscript}
+                    disabled={examFinished || !transcript || isSubmitting}
+                    className="px-6 py-2 bg-gray-200 text-gray-700 rounded-xl font-medium transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed hover:bg-gray-300"
+                  >
+                    Clear
+                  </button>
                 <button
-                  onClick={finishExam}
-                  disabled={isSubmitting || examFinished}
-                  className="flex items-center gap-2 px-6 py-3 rounded-xl font-medium transition-all duration-200 bg-gradient-to-r from-red-500 to-pink-500 hover:from-red-600 hover:to-pink-600 text-white shadow-lg shadow-red-500/25 disabled:opacity-50 disabled:cursor-not-allowed hover:scale-105 disabled:hover:scale-100"
-                >
-                  <Flag className="w-5 h-5" />
-                  Finish Exam
+                    onClick={submitAnswer}
+                    disabled={examFinished || !transcript || isSubmitting}
+                    className="flex items-center gap-2 px-6 py-2 bg-gradient-to-r from-emerald-500 to-teal-500 text-white rounded-xl font-medium transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed hover:scale-105 shadow-lg shadow-emerald-500/25"
+                  >
+                    {isSubmitting ? 'Submitting...' : 'Submit & Next'}
+                    {!isSubmitting && <Send className="w-4 h-4" />}
                 </button>
               </div>
-            </div>
+            </section>
           </div>
-
-          {/* Right Sidebar - Proctoring */}
-          <div className="lg:col-span-1 space-y-6">
-            <div className="sticky top-24">
-              {/* Proctoring Monitor */}
-              <WebCam />
-
-              {/* Exam Stats */}
-              <div className="bg-white/80 backdrop-blur-sm rounded-2xl p-6 border border-gray-200/50 shadow-lg">
-                <h3 className="text-lg font-semibold text-gray-900 mb-4 flex items-center gap-2">
-                  <Monitor className="w-5 h-5 text-indigo-600" />
-                  Exam Progress
-                </h3>
-                
-                <div className="space-y-4">
-                  <div className="flex items-center justify-between p-3 bg-gradient-to-r from-blue-50 to-indigo-50 rounded-xl border border-blue-100">
-                    <span className="text-gray-700 font-medium">Current Question</span>
-                    <span className="text-indigo-700 font-bold">{activeQuestion}/{questions.length}</span>
-                  </div>
-                  
-                  <div className="flex items-center justify-between p-3 bg-gradient-to-r from-emerald-50 to-teal-50 rounded-xl border border-emerald-100">
-                    <span className="text-gray-700 font-medium">Completed</span>
-                    <span className="text-emerald-700 font-bold">{Object.keys(answers).length}</span>
-                  </div>
-                  
-                  <div className="flex items-center justify-between p-3 bg-gradient-to-r from-purple-50 to-pink-50 rounded-xl border border-purple-100">
-                    <span className="text-gray-700 font-medium">Time Elapsed</span>
-                    <span className="text-purple-700 font-bold">{formatTime(timeElapsed)}</span>
-                  </div>
-                  
-                  <div className="flex items-center justify-between p-3 bg-gradient-to-r from-amber-50 to-orange-50 rounded-xl border border-amber-100">
-                    <span className="text-gray-700 font-medium">Remaining</span>
-                    <span className="text-amber-700 font-bold">{questions.length - Object.keys(answers).length}</span>
-                  </div>
-                </div>
-                
-                {/* Quick Actions */}
-                <div className="mt-6 pt-4 border-t border-gray-200">
-                  <h4 className="text-sm font-semibold text-gray-700 mb-3">Quick Actions</h4>
-                  <div className="grid grid-cols-2 gap-2">
-                    <button 
-                      onClick={() => window.location.reload()}
-                      className="text-xs px-3 py-2 bg-gray-100 hover:bg-gray-200 text-gray-700 rounded-lg transition-colors"
-                    >
-                      Refresh
-                    </button>
-                    <button 
-                      onClick={speakQuestion}
-                      disabled={isSpeaking}
-                      className="text-xs px-3 py-2 bg-indigo-100 hover:bg-indigo-200 text-indigo-700 rounded-lg transition-colors disabled:opacity-50"
-                    >
-                      {isSpeaking ? 'Speaking...' : 'Read Q'}
-                    </button>
-                    <button 
-                      onClick={clearTranscript}
-                      disabled={!transcript}
-                      className="text-xs px-3 py-2 bg-red-100 hover:bg-red-200 text-red-700 rounded-lg transition-colors disabled:opacity-50"
-                    >
-                      Clear Text  
-                    </button>
-                    <button 
-                      onClick={toggleSpeechRecognition}
-                      className={`text-xs px-3 py-2 rounded-lg transition-colors ${
-                        isListening 
-                          ? 'bg-red-100 hover:bg-red-200 text-red-700' 
-                          : 'bg-green-100 hover:bg-green-200 text-green-700'
-                      }`}
-                    >
-                      {isListening ? 'Stop Mic' : 'Start Mic'}
-                    </button>
-                  </div>
-                </div>
-              </div>
-            </div>
-          </div>
+          
+          {/* Right Column: Proctoring Monitor */}
+          <aside className="lg:col-span-1">
+             <WebCam />
+          </aside>
         </div>
-      </div>
+      </main>
     </div>
   );
 }
