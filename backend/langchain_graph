@@ -1,0 +1,30 @@
+// LangChain LLM Chain and Memory State
+digraph {
+	Start [label="/api/start" shape=box]
+	Submit [label="/api/submit" shape=box]
+	Finish [label="/api/finish" shape=box]
+	IntroPrompt [label=IntroPrompt shape=ellipse]
+	ProjectPrompt [label=ProjectPrompt shape=ellipse]
+	CorePrompt [label=CoreSubjectPrompt shape=ellipse]
+	EvalPrompt [label=EvaluationPrompt shape=ellipse]
+	ChatGroq [label="ChatGroq (LLM)" shape=diamond]
+	Memory [label=ConversationBufferMemory shape=cylinder]
+	Session [label=Session shape=box]
+	Start -> Memory
+	Start -> IntroPrompt
+	IntroPrompt -> ChatGroq
+	ChatGroq -> Memory
+	Submit -> Memory
+	Submit -> ProjectPrompt
+	Submit -> CorePrompt
+	ProjectPrompt -> ChatGroq
+	CorePrompt -> ChatGroq
+	Submit -> EvalPrompt
+	EvalPrompt -> ChatGroq
+	Finish -> Memory
+	Finish -> EvalPrompt
+	Memory -> ChatGroq
+	Start -> Session
+	Submit -> Session
+	Finish -> Session
+}

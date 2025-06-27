@@ -15,11 +15,24 @@ import {
   Send,
   Play,
   Pause,
-  XCircle // Added for Finish button
+  XCircle
 } from 'lucide-react';
 
+// Simulated candidate data (replaced with localStorage data)
+const getCandidateData = () => {
+  const data = localStorage.getItem('candidate');
+  return data ? JSON.parse(data) : {
+    id: "candidate123",
+    email: "candidate@example.com",
+    rollNo: "ROLL123",
+    name: "John Doe"
+  };
+};
+
+let candidateData = getCandidateData();
+
 // ====================================================================
-//  WebCam Proctoring Component (No changes needed here)
+// WebCam Proctoring Component (No changes needed here)
 // ====================================================================
 
 const WebCam = () => {
@@ -155,7 +168,7 @@ const WebCam = () => {
 };
 
 // ====================================================================
-//  Main Interview Component - Integrated with Backend
+// Main Interview Component - Integrated with Backend
 // ====================================================================
 
 export default function InterviewDashboard() {
@@ -166,7 +179,7 @@ export default function InterviewDashboard() {
   const [transcript, setTranscript] = useState('');
   const [isSpeaking, setIsSpeaking] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
-  const [isFinishing, setIsFinishing] = useState(false); // New state for finish button
+  const [isFinishing, setIsFinishing] = useState(false);
   const [examFinished, setExamFinished] = useState(false);
   const [timeElapsed, setTimeElapsed] = useState(0);
   const [interviewStarted, setInterviewStarted] = useState(false);
@@ -175,6 +188,7 @@ export default function InterviewDashboard() {
   
   const recognitionRef = useRef(null);
   const apiUrl = 'http://localhost:8000/api';
+  const resultsApiUrl = 'http://localhost:5000/api';
 
   useEffect(() => {
     let timer;
@@ -227,7 +241,7 @@ export default function InterviewDashboard() {
       if (data.status === 'evaluation') {
         setEvaluation(data.evaluation);
         setExamFinished(true);
-        await endExamSession();
+        await endExamSession(data.evaluation);
       } else {
         setCurrentQuestion(data.question);
         setQuestionStatus(data.status);
@@ -253,12 +267,13 @@ export default function InterviewDashboard() {
             method: 'POST',
             credentials: 'include',
             headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ answer: transcript.trim() })
         });
         if (!response.ok) throw new Error(`Failed to finish interview: ${response.statusText}`);
         const data = await response.json();
         setEvaluation(data.evaluation);
         setExamFinished(true);
-        await endExamSession();
+        await endExamSession(data.evaluation);
     } catch (err) {
         setError(`Failed to finish interview: ${err.message}`);
         console.error('Error finishing interview:', err);
@@ -267,8 +282,33 @@ export default function InterviewDashboard() {
     }
   };
 
-  const endExamSession = async () => {
+  const endExamSession = async (evaluationText) => {
     try {
+      // Extract score from evaluation text
+      const scoreMatch = evaluationText.match(/FINAL MARK: (\d+) out of 50/i);
+      const score = scoreMatch ? parseInt(scoreMatch[1]) : 0;
+
+      // Fetch updated candidate data from localStorage
+      candidateData = getCandidateData();
+
+      // Submit interview results to the new endpoint
+      const resultResponse = await fetch(`${resultsApiUrl}/round3/results`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          candidateId: candidateData.id,
+          candidateEmail: candidateData.email,
+          candidateRoll: candidateData.role || 'candidate',
+          CandidateRollno: candidateData.rollNo,
+          submissionDate: new Date().toISOString(),
+          round: 3,
+          score: score,
+          totalScore: 50
+        })
+      });
+      if (!resultResponse.ok) throw new Error(`Failed to submit interview results: ${resultResponse.statusText}`);
+      
+      // End the exam session
       await fetch(`${apiUrl}/end-exam`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
