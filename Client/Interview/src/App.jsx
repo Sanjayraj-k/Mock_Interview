@@ -11,6 +11,11 @@ import FaceDetection from './pages/FaceDetection.jsx';
 import Protected from './pages/Protected.jsx'; // Added assuming it exists
 import GoogleFormWithWebcam from './pages/GoogleForm.jsx';
 import WebCam from './pages/webCam.jsx'; // Adjusted extension for consistency
+import Result from './pages/Result.jsx';
+import Coding from './pages/Coding.jsx';
+import Round1 from './pages/Round1.jsx';
+import Round2 from './pages/Hrround.jsx';
+import Interview from './pages/Interview.jsx';
 
 // Protected Route for HR
 const ProtectedHRRoute = ({ children }) => {
@@ -34,12 +39,12 @@ function App() {
           <Routes>
             {/* 1. Landing Page Route - Main entry point */}
             <Route path="/" element={<LandingPage />} />
-
-            {/* 2. HR Routes */}
+                      {/* 2. HR Routes */}
             <Route path="/hr">
               <Route index element={<Navigate to="/hr/login" replace />} />
               <Route path="login" element={<Login />} />
               <Route path="signup" element={<Signup />} />
+              
               <Route
                 path="dashboard"
                 element={
@@ -49,13 +54,11 @@ function App() {
                 }
               />
             </Route>
-
             {/* 3. Candidate Route */}
             <Route path="/candidate">
               <Route index element={<Navigate to="/candidate/login" replace />} />
               <Route path="login" element={<StudentLogin />} />
             </Route>
-
             {/* 4. Protected Candidate Pages */}
             <Route
               path="/user-select"
@@ -97,7 +100,35 @@ function App() {
                 </ProtectedCandidateRoute>
               }
             />
-
+            <Route path="/coding" element={
+              <ProtectedCandidateRoute>
+              <Coding/>
+              </ProtectedCandidateRoute>
+            }/>
+            <Route
+              path="/result"
+              element={
+                <ProtectedCandidateRoute>
+                  <Result />
+                </ProtectedCandidateRoute>
+              }
+            />
+            <Route path="/round1" element={
+              <ProtectedCandidateRoute>
+              <Round1/>
+              </ProtectedCandidateRoute>
+            }/>
+            <Route path="/round2" element={
+              <ProtectedCandidateRoute>
+              <Round2/>
+              </ProtectedCandidateRoute>
+            }/>
+            <Route path="/interview" element={
+              <ProtectedCandidateRoute>
+                <Interview/>
+              </ProtectedCandidateRoute>
+            }/>
+            <Route path='/interview' element={<Interview/>}/>  \
             {/* 5. Fallback Route - Redirects any unknown URL to the landing page */}
             <Route path="*" element={<Navigate to="/" replace />} />
           </Routes>

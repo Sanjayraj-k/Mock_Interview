@@ -72,7 +72,7 @@ const AdvancedFormMonitoringSystem = () => {
       }
 
       const data = await response.json();
-      console.log('Fetched data:', data); // Debug log
+      console.log('Fetched questions:', data); // Debug log
 
       // Handle both cases: direct array or wrapped in 'questions' key
       const fetchedQuestions = Array.isArray(data) ? data : data.questions || [];
@@ -92,6 +92,7 @@ const AdvancedFormMonitoringSystem = () => {
 
   // Handle answer selection
   const handleAnswerSelect = (questionIndex, option) => {
+    console.log(`Selected answer for question ${questionIndex}: ${option}`); // Debug log
     setAnswers(prev => ({
       ...prev,
       [questionIndex]: option
@@ -101,16 +102,63 @@ const AdvancedFormMonitoringSystem = () => {
   // Submit results to backend
   const submitResults = async () => {
     try {
+      // Retrieve candidate data from localStorage
+      const candidateData = JSON.parse(localStorage.getItem('candidate')) || {};
+      console.log('Candidate data:', candidateData); // Debug log
+
+      // Log questions and answers for debugging
+      console.log('Questions:', questions);
+      console.log('Answers:', answers);
+
+      // Calculate score
+      let score = 0;
+      questions.forEach((question, index) => {
+        const userAnswer = answers[index];
+        const correctAnswer = question.correctAnswer || question.correct_answer || question.answer; // Fallback for different field names
+        console.log(`Question ${index + 1}:`);
+        console.log(`  User Answer: ${userAnswer}`);
+        console.log(`  Correct Answer: ${correctAnswer}`);
+        
+        // Normalize answers for comparison (trim whitespace, convert to string)
+        const normalizedUserAnswer = userAnswer ? String(userAnswer).trim() : '';
+        const normalizedCorrectAnswer = correctAnswer ? String(correctAnswer).trim() : '';
+        
+        if (normalizedUserAnswer && normalizedUserAnswer === normalizedCorrectAnswer) {
+          score += 1;
+          console.log(`  Correct! Score: ${score}`);
+        } else {
+          console.log(`  Incorrect.`);
+        }
+      });
+
+      // Calculate percentage
+      const totalQuestions = questions.length;
+      const percentage = totalQuestions > 0 ? (score / totalQuestions) * 100 : 0;
+      console.log(`Final Score: ${score}/${totalQuestions}, Percentage: ${percentage}%`); // Debug log
+
+      // Prepare data to send
+      const resultData = {
+        candidate: {
+          id: candidateData.id || '',
+          email: candidateData.email || '',
+          rollNo: candidateData.rollNo || '',
+          role: candidateData.role || '',
+          status: candidateData.status || ''
+        },
+        score,
+        percentage,
+        total_questions: totalQuestions,
+        round: 1
+      };
+
+      console.log('Sending result data:', resultData); // Debug log
+
       const response = await fetch('http://localhost:5000/api/submit-results', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
         },
-        body: JSON.stringify({
-          answers,
-          questions,
-          user_email: "shimal@example.com" // Hardcoded for now
-        })
+        body: JSON.stringify(resultData)
       });
 
       if (!response.ok) {
@@ -118,11 +166,12 @@ const AdvancedFormMonitoringSystem = () => {
       }
 
       const data = await response.json();
-      return data.score;
+      console.log('Results submitted:', data);
+      return data;
     } catch (err) {
       console.error("Error submitting results:", err);
       setQuestionError(`Failed to submit results: ${err.message}`);
-      return 0;
+      return null;
     }
   };
 
@@ -150,7 +199,10 @@ const AdvancedFormMonitoringSystem = () => {
 
   // Start test
   const startTest = async () => {
-    await fetchQuestions();
+    if (questions.length === 0 && !loadingQuestions) {
+      await fetchQuestions(); // Only fetch if questions are not already loaded
+    }
+
     if (!questionError && questions.length > 0) {
       startCamera();
       startAudioMonitoring();
@@ -330,7 +382,7 @@ const AdvancedFormMonitoringSystem = () => {
     exitFullScreen();
     setIsTestMode(false);
     await submitResults();
-    navigate('/result');
+    navigate('/round1');
   };
 
   // Event listeners
@@ -387,7 +439,7 @@ const AdvancedFormMonitoringSystem = () => {
       }
     };
     window.addEventListener('blur', handleWindowBlur);
-    return () => window.removeEventListener('blur', handleWindowBlur); // Fixed typo
+    return () => window.removeEventListener('blur', handleWindowBlur);
   }, [isTestMode]);
 
   useEffect(() => {

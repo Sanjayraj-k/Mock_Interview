@@ -5,6 +5,8 @@ from bson import ObjectId
 from datetime import datetime
 import bcrypt
 import re
+from pytz import timezone
+import json
 
 app = Flask(__name__)
 # This allows your React app at localhost:5173 to communicate with your Flask server
@@ -226,21 +228,15 @@ def create_student():
 @app.route('/api/get-random-questions', methods=['GET'])
 def get_random_questions():
     """Fetches a random set of questions from the aptitude collection."""
-    
     try:
-        # Get the total number of questions in the aptitude collection
         total_questions = db.aptitude.count_documents({})
         if total_questions == 0:
             return jsonify({"error": "No questions available in the aptitude collection"}), 404
 
-        # Determine how many questions to fetch (e.g., 5, or use a query parameter)
         num_questions = min(request.args.get('count', default=5, type=int), total_questions)
-        
-        # Fetch random questions using aggregate with $sample
         pipeline = [{"$sample": {"size": num_questions}}]
         questions = list(db.aptitude.aggregate(pipeline))
 
-        # Convert ObjectId to string for JSON compatibility
         for question in questions:
             question['_id'] = str(question['_id'])
 
@@ -248,7 +244,218 @@ def get_random_questions():
     except Exception as e:
         app.logger.error(f"Get random questions error: {e}")
         return jsonify({"error": "An internal server error occurred"}), 500
-    
+
+# --- New Results Endpoint ---
+@app.route('/api/submit-results', methods=['POST'])
+def submit_results():
+    """Stores quiz results for a candidate, including user details, score, percentage, and round."""
+    try:
+        data = request.get_json()
+        candidate_data = data.get("candidate")
+        score = data.get("score")
+        percentage = data.get("percentage")
+        total_questions = data.get("total_questions")
+        round_number = data.get("round")
+
+        # Validate required fields
+        required_fields = ["id", "email", "rollNo", "role", "status"]
+        if not candidate_data or not all(field in candidate_data for field in required_fields):
+            return jsonify({"error": "Missing required candidate data fields: id, email, rollNo, role, status"}), 400
+        if score is None or percentage is None or total_questions is None or round_number is None:
+            return jsonify({"error": "Missing required fields: score, percentage, total_questions, or round"}), 400
+
+        # Prepare quiz result document
+        quiz_result = {
+            "candidate_id": candidate_data["id"],
+            "email": candidate_data["email"],
+            "rollNo": candidate_data["rollNo"],
+            "role": candidate_data["role"],
+            "status": candidate_data["status"],
+            "score": int(score),
+            "percentage": float(percentage),
+            "total_questions": int(total_questions),
+            "round": int(round_number),
+            "submittedAt": datetime.utcnow()
+        }
+
+        # Insert into quiz_results collection
+        result = db.quiz_results.insert_one(quiz_result)
+        quiz_result['_id'] = str(result.inserted_id)
+
+        return jsonify({
+            "message": "Quiz results stored successfully",
+            "quiz_result": quiz_result
+        }), 201
+    except Exception as e:
+        app.logger.error(f"Submit results error: {e}")
+        return jsonify({"error": "An internal server error occurred"}), 500
+@app.route('/api/round2/results', methods=['POST'])
+def submit_round2_results():
+    """Stores round 2 results for a candidate."""
+    try:
+        data = request.get_json()
+        candidate_data = data.get("candidate")
+        score = data.get("score")
+        candidateId =data.get("candidateId")
+        candidateName =data.get("candidateName")
+        candidateEmail=data.get("candidateEmail")
+        candidateRoll=data.get("candidateRoll")
+        CandidateRollno=data.get("CandidateRollno")
+        submissionDate= data.get("submissionDate")
+        score = data.get("score")
+        totalscore = data.get("totalScore")
+
+        # Validate required fields
+        
+
+        # Prepare round 2 result document
+        round2_result = {
+            "candidateId": candidateId,
+           
+            "candidateEmail": candidateEmail,
+            "candidateRoll": candidateRoll,
+            "CandidateRollno": CandidateRollno,
+            "submissionDate": submissionDate,
+            "round": 2,
+            "score": totalscore,
+            "submittedAt": datetime.utcnow()
+        }
+
+        # Insert into round2_results collection
+        result = db.quiz_results.insert_one(round2_result)
+        round2_result['_id'] = str(result.inserted_id)
+
+        return jsonify({
+            "message": "Round 2 results stored successfully",
+            "round2_result": round2_result
+        }), 201
+    except Exception as e:
+        app.logger.error(f"Submit round 2 results error: {e}")
+        return jsonify({"error": "An internal server error occurred"}), 500
+@app.route('/api/round3/results', methods=['POST'])
+def submit_round3_results():
+    """Stores round 3 results for a candidate."""
+    try:
+        data = request.get_json()
+        candidateId = data.get("candidateId")
+        candidateEmail = data.get("candidateEmail")
+        candidateRoll = data.get("candidateRoll")
+        CandidateRollno = data.get("CandidateRollno")
+        submissionDate = data.get("submissionDate")
+        score = data.get("score")
+        totalScore = data.get("totalScore")
+
+        # Validate required fields
+        required_fields = ["candidateId", "candidateEmail", "candidateRoll", "CandidateRollno", "submissionDate", "score", "totalScore"]
+        if not all(field in data for field in required_fields):
+            return jsonify({"error": f"Missing required fields: {required_fields}"}), 400
+
+        # Prepare round 3 result document
+        round3_result = {
+            "candidateId": candidateId,
+            "candidateEmail": candidateEmail,
+            "candidateRoll": candidateRoll,
+            "CandidateRollno": CandidateRollno,
+            "submissionDate": submissionDate,
+            "round": 3,
+            "score": int(score),
+            "totalScore": int(totalScore),
+            "submittedAt": datetime.utcnow()
+        }
+
+        # Insert into quiz_results collection
+        result = db.quiz_results.insert_one(round3_result)
+        round3_result['_id'] = str(result.inserted_id)
+
+        return jsonify({
+            "message": "Round 3 results stored successfully",
+            "round3_result": round3_result
+        }), 201
+    except Exception as e:
+        app.logger.error(f"Submit round 3 results error: {e}")
+        return jsonify({"error": "An internal server error occurred"}), 500
+
+@app.route('/api/test-results', methods=['GET'])
+def get_test_results():
+    """
+    Fetches and aggregates all test results for a specific role, grouping by student.
+    """
+    role_title = request.args.get('role')
+
+    if not role_title:
+        return jsonify({"error": "role query parameter is required"}), 400
+
+    try:
+        # Step 1: Query the quiz_results collection by role title.
+        results_cursor = db.quiz_results.find({
+            "$or": [
+                {"role": role_title},
+                {"candidateRoll": role_title}
+            ]
+        })
+
+        # Step 2: Aggregate results by student email.
+        aggregated_results = {}
+        for result in results_cursor:
+            # Normalize email and roll number
+            email = result.get('email') or result.get('candidateEmail')
+            roll_no = result.get('rollNo') or result.get('CandidateRollno')
+
+            if not email:
+                continue # Skip records without an email
+
+            # If student is not yet in our dictionary, add them.
+            if email not in aggregated_results:
+                aggregated_results[email] = {
+                    "email": email,
+                    "rollNo": roll_no,
+                    "round1_score": None,
+                    "round2_score": None,
+                    "round3_score": None,
+                    "total_score": 0,
+                    "max_round": 0,
+                    "submissions": []
+                }
+            
+            # Update scores for the specific round
+            round_num = result.get('round')
+            score = result.get('score', 0)
+            
+            if round_num == 1:
+                aggregated_results[email]['round1_score'] = score
+            elif round_num == 2:
+                aggregated_results[email]['round2_score'] = score
+            elif round_num == 3:
+                aggregated_results[email]['round3_score'] = score
+            
+            # Keep track of the highest round completed and submissions
+            if round_num and round_num > aggregated_results[email]['max_round']:
+                aggregated_results[email]['max_round'] = round_num
+            
+            # Add submission date for finding the latest one if needed
+            submission_date = result.get('submittedAt') or result.get('submissionDate')
+            if submission_date:
+                aggregated_results[email]['submissions'].append(submission_date)
+
+        # Step 3: Calculate total scores and finalize the list.
+        final_results = []
+        for email, data in aggregated_results.items():
+            # Calculate total score
+            data['total_score'] = sum(filter(None, [data['round1_score'], data['round2_score'], data['round3_score']]))
+            # Find the last submission time
+            data['lastSubmittedAt'] = max(data['submissions']) if data['submissions'] else None
+            del data['submissions'] # Clean up temporary field
+            final_results.append(data)
+            
+        # Sort by total score descending
+        final_results.sort(key=lambda x: x['total_score'], reverse=True)
+
+        return jsonify(final_results), 200
+
+    except Exception as e:
+        app.logger.error(f"Get aggregated test results error: {e}")
+        return jsonify({"error": "An internal server error occurred"}), 500
+
 
 if __name__ == '__main__':
     app.run(host='0.0.0.0', port=5000, debug=True)

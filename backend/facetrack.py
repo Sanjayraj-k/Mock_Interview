@@ -206,4 +206,4 @@ def toggle_alerts():
 
 if __name__ == '__main__':
     logger.info("Starting Flask server on port 4000")
-    app.run(host='0.0.0.0', port=4000, debug=True, use_reloader=False)
+    app.run(host='0.0.0.0', port=4001, debug=True, use_reloader=False)

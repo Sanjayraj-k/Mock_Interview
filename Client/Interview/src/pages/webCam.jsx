@@ -21,7 +21,7 @@ const WebCam = () => {
   const canvasRef = useRef(null);
   const streamRef = useRef(null);
   const intervalRef = useRef(null);
-  const apiUrl = 'http://localhost:4000';
+  const apiUrl = 'http://localhost:4001';
 
   const startProctoring = async () => {
     try {
