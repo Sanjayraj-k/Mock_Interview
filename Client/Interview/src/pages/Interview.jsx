@@ -383,13 +383,75 @@ export default function InterviewDashboard() {
   if (examFinished) {
     return (
       <div className="min-h-screen bg-gradient-to-br from-indigo-50 via-white to-purple-50 flex items-center justify-center p-4">
-        <div className="bg-white/80 backdrop-blur-sm rounded-3xl shadow-2xl p-8 max-w-2xl border border-white/20">
-          <div className="text-center mb-6">
-            <div className="relative"><CheckCircle className="w-20 h-20 text-emerald-500 mx-auto mb-6" /><div className="absolute inset-0 animate-ping"><CheckCircle className="w-20 h-20 text-emerald-300 mx-auto opacity-30" /></div></div>
-            <h2 className="text-3xl font-bold bg-gradient-to-r from-emerald-600 to-teal-600 bg-clip-text text-transparent mb-3">Interview Completed!</h2>
-            <div className="text-emerald-600 text-sm">Time Taken: {formatTime(timeElapsed)}</div>
+        <div className="bg-white/80 backdrop-blur-sm rounded-3xl shadow-2xl p-8 max-w-2xl w-full border border-white/20 transition-all duration-500 hover:shadow-3xl hover:-translate-y-1">
+          <div className="text-center mb-8">
+            <div className="relative inline-block">
+              <CheckCircle className="w-20 h-20 text-emerald-500 mx-auto mb-6 animate-bounce" />
+              <div className="absolute inset-0 bg-emerald-100 rounded-full opacity-0 animate-[ping_1s_cubic-bezier(0,0,0.2,1)_forwards]" />
+            </div>
+            <h2 className="text-4xl font-bold bg-gradient-to-r from-emerald-600 to-teal-600 bg-clip-text text-transparent mb-3">
+              Interview Completed!
+            </h2>
+
+            <div className="h-1 bg-gradient-to-r from-emerald-100 to-teal-100 rounded-full w-3/4 mx-auto mb-8" />
           </div>
-          {evaluation && <div className="bg-gradient-to-r from-gray-50 to-white rounded-xl p-6 border border-gray-100 text-left"><h3 className="text-lg font-semibold mb-4 text-gray-900">Your Evaluation</h3><div className="whitespace-pre-wrap text-gray-700 leading-relaxed">{evaluation}</div></div>}
+
+          <div className="bg-gradient-to-br from-gray-50 to-white rounded-xl p-6 border border-gray-100 shadow-inner transition-all duration-300 hover:shadow-md">
+            <div className="flex items-center mb-4">
+              <div className="bg-emerald-100 p-2 rounded-lg mr-4">
+                <Flag className="w-6 h-6 text-emerald-600" />
+              </div>
+              <h3 className="text-xl font-semibold text-gray-800">
+                Evaluation Complete
+              </h3>
+            </div>
+            
+            <div className="space-y-4 text-gray-700 leading-relaxed">
+              <p className="text-lg">
+                Congratulations on completing all rounds of the mock interview process!
+              </p>
+              
+              <div className="bg-blue-50/50 border-l-4 border-blue-400 p-4 rounded-r-lg">
+                <p>
+                  Your responses have been recorded and submitted for review.
+                </p>
+              </div>
+              
+              <p>
+                If you are shortlisted for the next stage, you will receive an 
+                email notification within 5-7 business days.
+              </p>
+              
+              <div className="bg-amber-50/50 border-l-4 border-amber-400 p-4 rounded-r-lg">
+                <p>
+                  Remember to check your email regularly, including spam folder, 
+                  for any updates regarding your application.
+                </p>
+              </div>
+            </div>
+          </div>
+
+          <div className="mt-8 text-center">
+            <div className="inline-flex items-center bg-gradient-to-r from-indigo-100 to-purple-100 px-6 py-3 rounded-full shadow-sm">
+              <Shield className="w-5 h-5 text-indigo-600 mr-2" />
+              <span className="text-indigo-700 font-medium">
+                Your session was securely proctored and recorded
+              </span>
+            </div>
+          </div>
+
+          <div className="mt-12 text-center">
+            <h4 className="text-2xl font-light text-gray-600 mb-4">
+              Thank you for participating!
+            </h4>
+            <p className="text-gray-500 max-w-md mx-auto">
+              We appreciate the time and effort you've put into this Mock interview process.
+              Wishing you the best in your career journey!
+            </p>
+            <div className="mt-6">
+              <div className="h-px bg-gradient-to-r from-transparent via-gray-300 to-transparent w-full max-w-xs mx-auto" />
+            </div>
+          </div>
         </div>
       </div>
     );
@@ -399,7 +461,7 @@ export default function InterviewDashboard() {
     return (
       <div className="min-h-screen bg-gradient-to-br from-indigo-50 via-white to-purple-50 flex items-center justify-center p-4">
         <div className="bg-white/80 backdrop-blur-sm rounded-3xl shadow-2xl p-8 max-w-2xl text-center border border-white/20">
-          <div className="mb-6"><Zap className="w-16 h-16 text-indigo-600 mx-auto mb-4" /><h1 className="text-3xl font-bold bg-gradient-to-r from-indigo-900 to-purple-900 bg-clip-text text-transparent mb-3">AI Interview Assistant</h1><p className="text-gray-600 leading-relaxed">Welcome to your AI-powered interview session. This system will ask you questions with real-time proctoring to ensure exam integrity.</p></div>
+          <div className="mb-6"><Zap className="w-16 h-16 text-indigo-600 mx-auto mb-4" /><h1 className="text-3xl font-bold bg-gradient-to-r from-indigo-900 to-purple-900 bg-clip-text text-transparent mb-3">Welcome to your AI-Powered Technical Interview Session</h1><p className="text-gray-600 leading-relaxed">This intelligent interview platform simulates a real-world HR round using AI-driven questions and responses. The session is monitored in real time through proctoring tools to ensure integrity and fairness throughout the assessment.</p></div>
           {error && <div className="mb-6 p-4 bg-red-50 border border-red-200 rounded-xl"><div className="flex items-center text-red-700 justify-center"><AlertCircle className="mr-3 w-5 h-5" /><p className="text-sm">{error}</p></div></div>}
           <div className="space-y-4 mb-6">
             <div className="flex items-center justify-center gap-2 text-gray-600"><Camera className="w-5 h-5" /><span>Camera access required for proctoring</span></div>

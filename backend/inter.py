@@ -536,4 +536,4 @@ if __name__ == "__main__":
         logger.info("Server stopped by user")
     except Exception as e:
         logger.error(f"Server error: {e}")
-        sys.exit(1)
+        sys.exit(1) 
