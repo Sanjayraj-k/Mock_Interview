@@ -18,7 +18,7 @@ import {
   XCircle
 } from 'lucide-react';
 
-// Simulated candidate data (replaced with localStorage data)
+// Simulated candidate data
 const getCandidateData = () => {
   const data = localStorage.getItem('candidate');
   return data ? JSON.parse(data) : {
@@ -31,10 +31,7 @@ const getCandidateData = () => {
 
 let candidateData = getCandidateData();
 
-// ====================================================================
-// WebCam Proctoring Component (No changes needed here)
-// ====================================================================
-
+// WebCam Component
 const WebCam = () => {
   const [isActive, setIsActive] = useState(false);
   const [proctorData, setProctorData] = useState({
@@ -46,6 +43,7 @@ const WebCam = () => {
     look_direction: 'Unknown',
     eyes_closed: false,
     long_blink_count: 0,
+    alert: false
   });
   const [error, setError] = useState(null);
   const videoRef = useRef(null);
@@ -53,7 +51,7 @@ const WebCam = () => {
   const streamRef = useRef(null);
   const intervalRef = useRef(null);
   
-  const apiUrl = 'http://localhost:8000/api';
+  const apiUrl = 'https://mock-interview-4-pyq4.onrender.com/api';
 
   const startProctoring = async () => {
     try {
@@ -108,11 +106,17 @@ const WebCam = () => {
         credentials: 'include',
         body: JSON.stringify({ image: imageData.split(',')[1] }),
       });
-      if (!response.ok) throw new Error(`Server error: ${response.statusText}`);
+      if (!response.ok) throw new Error(`Server error: ${response.statusText} (${response.status})`);
       const data = await response.json();
       setProctorData(prev => ({ ...prev, ...data }));
+      if (data.alert) {
+        const audio = new Audio('/alert.mp3'); // Ensure alert.mp3 is in public/
+        audio.play().catch(err => console.error('Audio playback error:', err));
+        alert('Warning: Proctoring violation detected!');
+      }
     } catch (err) {
       console.error('Error processing frame:', err);
+      setError(`Failed to process frame: ${err.message}`);
     }
   };
 
@@ -167,10 +171,7 @@ const WebCam = () => {
   );
 };
 
-// ====================================================================
-// Main Interview Component - Integrated with Backend
-// ====================================================================
-
+// Main Interview Component
 export default function InterviewDashboard() {
   const [currentQuestion, setCurrentQuestion] = useState('');
   const [questionStatus, setQuestionStatus] = useState('');
@@ -187,8 +188,8 @@ export default function InterviewDashboard() {
   const [error, setError] = useState('');
   
   const recognitionRef = useRef(null);
-  const apiUrl = 'http://localhost:8000/api';
-  const resultsApiUrl = 'http://localhost:5000/api';
+  const apiUrl = 'https://mock-interview-4-pyq4.onrender.com/api';
+  const resultsApiUrl = 'https://mock-interview-befx.onrender.com/api';
 
   useEffect(() => {
     let timer;
@@ -207,9 +208,17 @@ export default function InterviewDashboard() {
   const startInterview = async () => {
     try {
       setError('');
-      const response = await fetch(`${apiUrl}/start`, { method: 'GET', credentials: 'include' });
-      if (!response.ok) throw new Error(`Failed to start interview: ${response.statusText}`);
+      const response = await fetch(`${apiUrl}/start`, {
+        method: 'GET',
+        credentials: 'include',
+        headers: { 'Content-Type': 'application/json' }
+      });
+      if (!response.ok) {
+        const errorText = await response.text();
+        throw new Error(`Failed to start interview: ${response.statusText} (${response.status}) - ${errorText}`);
+      }
       const data = await response.json();
+      if (data.error) throw new Error(data.error);
       setCurrentQuestion(data.question);
       setQuestionStatus(data.status);
       setQuestionNumber(data.question_number);
@@ -235,8 +244,12 @@ export default function InterviewDashboard() {
         credentials: 'include',
         body: JSON.stringify({ answer: finalTranscript }),
       });
-      if (!response.ok) throw new Error(`Failed to submit answer: ${response.statusText}`);
+      if (!response.ok) {
+        const errorText = await response.text();
+        throw new Error(`Failed to submit answer: ${response.statusText} (${response.status}) - ${errorText}`);
+      }
       const data = await response.json();
+      if (data.error) throw new Error(data.error);
       
       if (data.status === 'evaluation') {
         setEvaluation(data.evaluation);
@@ -263,22 +276,26 @@ export default function InterviewDashboard() {
     setIsFinishing(true);
     setError('');
     try {
-        const response = await fetch(`${apiUrl}/finish`, {
-            method: 'POST',
-            credentials: 'include',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ answer: transcript.trim() })
-        });
-        if (!response.ok) throw new Error(`Failed to finish interview: ${response.statusText}`);
-        const data = await response.json();
-        setEvaluation(data.evaluation);
-        setExamFinished(true);
-        await endExamSession(data.evaluation);
+      const response = await fetch(`${apiUrl}/finish`, {
+        method: 'POST',
+        credentials: 'include',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ answer: transcript.trim() })
+      });
+      if (!response.ok) {
+        const errorText = await response.text();
+        throw new Error(`Failed to finish interview: ${response.statusText} (${response.status}) - ${errorText}`);
+      }
+      const data = await response.json();
+      if (data.error) throw new Error(data.error);
+      setEvaluation(data.evaluation);
+      setExamFinished(true);
+      await endExamSession(data.evaluation);
     } catch (err) {
-        setError(`Failed to finish interview: ${err.message}`);
-        console.error('Error finishing interview:', err);
+      setError(`Failed to finish interview: ${err.message}`);
+      console.error('Error finishing interview:', err);
     } finally {
-        setIsFinishing(false);
+      setIsFinishing(false);
     }
   };
 
@@ -288,47 +305,60 @@ export default function InterviewDashboard() {
       const scoreMatch = evaluationText.match(/FINAL MARK: (\d+) out of 50/i);
       const score = scoreMatch ? parseInt(scoreMatch[1]) : 0;
 
-      // Fetch updated candidate data from localStorage
+      // Fetch updated candidate data
       candidateData = getCandidateData();
 
-      // Submit interview results to the new endpoint
-      const resultResponse = await fetch(`${resultsApiUrl}/round3/results`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          candidateId: candidateData.id,
-          candidateEmail: candidateData.email,
-          candidateRoll: candidateData.role || 'candidate',
-          CandidateRollno: candidateData.rollNo,
-          submissionDate: new Date().toISOString(),
-          round: 3,
-          score: score,
-          totalScore: 50
-        })
-      });
-      if (!resultResponse.ok) throw new Error(`Failed to submit interview results: ${resultResponse.statusText}`);
-      
+      // Submit interview results
+      try {
+        const resultResponse = await fetch(`${resultsApiUrl}/round3/results`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            candidateId: candidateData.id,
+            candidateEmail: candidateData.email,
+            candidateRoll: candidateData.role || 'candidate',
+            CandidateRollno: candidateData.rollNo,
+            submissionDate: new Date().toISOString(),
+            round: 3,
+            score: score,
+            totalScore: 50
+          })
+        });
+        if (!resultResponse.ok) {
+          console.warn(`Results API failed: ${resultResponse.statusText} (${resultResponse.status})`);
+        }
+      } catch (err) {
+        console.warn('Results API unavailable, skipping submission:', err);
+      }
+
       // End the exam session
-      await fetch(`${apiUrl}/end-exam`, {
+      const endResponse = await fetch(`${apiUrl}/end-exam`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         credentials: 'include',
         body: JSON.stringify({ timeElapsed, completed: true }),
       });
+      if (!endResponse.ok) throw new Error(`Failed to end exam: ${endResponse.statusText}`);
     } catch (err) {
       console.error('Error ending exam session:', err);
+      setError(`Failed to end exam session: ${err.message}`);
     }
   };
 
   const speakText = (text) => {
     if ('speechSynthesis' in window) {
-      if (isSpeaking) return window.speechSynthesis.cancel();
+      if (isSpeaking) window.speechSynthesis.cancel();
       setIsSpeaking(true);
       const utterance = new SpeechSynthesisUtterance(text);
       utterance.rate = 0.9;
       utterance.onend = () => setIsSpeaking(false);
-      utterance.onerror = () => setIsSpeaking(false);
+      utterance.onerror = (err) => {
+        setIsSpeaking(false);
+        console.error('Speech synthesis error:', err);
+      };
       window.speechSynthesis.speak(utterance);
+    } else {
+      setError('Text-to-speech not supported in this browser.');
     }
   };
 
@@ -361,7 +391,11 @@ export default function InterviewDashboard() {
         return newText + (interimTranscriptChunk ? ` [${interimTranscriptChunk}]` : '');
       });
     };
-    recognition.onerror = (event) => console.error('Speech recognition error:', event.error);
+    recognition.onerror = (event) => {
+      console.error('Speech recognition error:', event.error);
+      setError(`Speech recognition error: ${event.error}`);
+      setIsListening(false);
+    };
     recognition.onend = () => {
       setIsListening(false);
       setTranscript(prev => prev.replace(/\[.*?\]\s*$/, '').trim());
@@ -370,11 +404,17 @@ export default function InterviewDashboard() {
   }, []);
 
   const toggleSpeechRecognition = () => {
-    if (isListening) {
-      recognitionRef.current?.stop();
-    } else {
-      recognitionRef.current?.start();
-      setIsListening(true);
+    try {
+      if (isListening) {
+        recognitionRef.current?.stop();
+      } else {
+        recognitionRef.current?.start();
+        setIsListening(true);
+      }
+    } catch (err) {
+      setError(`Speech recognition failed: ${err.message}`);
+      console.error('Speech recognition error:', err);
+      setIsListening(false);
     }
   };
 
@@ -392,10 +432,8 @@ export default function InterviewDashboard() {
             <h2 className="text-4xl font-bold bg-gradient-to-r from-emerald-600 to-teal-600 bg-clip-text text-transparent mb-3">
               Interview Completed!
             </h2>
-
             <div className="h-1 bg-gradient-to-r from-emerald-100 to-teal-100 rounded-full w-3/4 mx-auto mb-8" />
           </div>
-
           <div className="bg-gradient-to-br from-gray-50 to-white rounded-xl p-6 border border-gray-100 shadow-inner transition-all duration-300 hover:shadow-md">
             <div className="flex items-center mb-4">
               <div className="bg-emerald-100 p-2 rounded-lg mr-4">
@@ -405,32 +443,18 @@ export default function InterviewDashboard() {
                 Evaluation Complete
               </h3>
             </div>
-            
             <div className="space-y-4 text-gray-700 leading-relaxed">
-              <p className="text-lg">
-                Congratulations on completing all rounds of the mock interview process!
-              </p>
-              
+              <p className="text-lg">{evaluation}</p>
+              <p>Thank you for completing the mock interview process!</p>
               <div className="bg-blue-50/50 border-l-4 border-blue-400 p-4 rounded-r-lg">
-                <p>
-                  Your responses have been recorded and submitted for review.
-                </p>
+                <p>Your responses have been recorded and submitted for review.</p>
               </div>
-              
-              <p>
-                If you are shortlisted for the next stage, you will receive an 
-                email notification within 5-7 business days.
-              </p>
-              
+              <p>If shortlisted, you will receive an email within 5-7 business days.</p>
               <div className="bg-amber-50/50 border-l-4 border-amber-400 p-4 rounded-r-lg">
-                <p>
-                  Remember to check your email regularly, including spam folder, 
-                  for any updates regarding your application.
-                </p>
+                <p>Check your email regularly, including spam, for updates.</p>
               </div>
             </div>
           </div>
-
           <div className="mt-8 text-center">
             <div className="inline-flex items-center bg-gradient-to-r from-indigo-100 to-purple-100 px-6 py-3 rounded-full shadow-sm">
               <Shield className="w-5 h-5 text-indigo-600 mr-2" />
@@ -439,13 +463,12 @@ export default function InterviewDashboard() {
               </span>
             </div>
           </div>
-
           <div className="mt-12 text-center">
             <h4 className="text-2xl font-light text-gray-600 mb-4">
               Thank you for participating!
             </h4>
             <p className="text-gray-500 max-w-md mx-auto">
-              We appreciate the time and effort you've put into this Mock interview process.
+              We appreciate your effort in this mock interview process.
               Wishing you the best in your career journey!
             </p>
             <div className="mt-6">
@@ -479,16 +502,15 @@ export default function InterviewDashboard() {
       <header className="bg-white/80 backdrop-blur-sm border-b border-gray-200/50 sticky top-0 z-20">
         <div className="max-w-7xl mx-auto px-6 py-4 flex items-center justify-between">
           <div className="flex items-center gap-4"><Zap className="w-8 h-8 text-indigo-600" /><h1 className="text-2xl font-bold bg-gradient-to-r from-indigo-900 to-purple-900 bg-clip-text text-transparent">AI Interview</h1><div className="hidden sm:flex items-center gap-2 px-3 py-1 bg-indigo-100 rounded-full"><Clock className="w-4 h-4 text-indigo-600" /><span className="text-sm font-medium text-indigo-700">{formatTime(timeElapsed)}</span></div></div>
-          <div className="flex items-center gap-3"><div className="text-sm text-gray-600">{questionStatus === 'intro' ? 'Introduction' : 'Project Discussion'}</div><div className="px-3 py-1 bg-blue-100 text-blue-700 rounded-full text-sm font-medium">Question {questionNumber}</div></div>
+          <div className="flex items-center gap-3"><div className="text-sm text-gray-600">{questionStatus === 'intro' ? 'Introduction' : questionStatus === 'project' ? 'Project Discussion' : 'Core Subject'}</div><div className="px-3 py-1 bg-blue-100 text-blue-700 rounded-full text-sm font-medium">Question {questionNumber}</div></div>
         </div>
       </header>
-
       <main className="max-w-7xl mx-auto p-6">
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
           <div className="lg:col-span-2 space-y-6">
             <section className="bg-white/80 backdrop-blur-sm rounded-2xl p-6 border border-gray-200/50 shadow-lg">
               <div className="flex items-start justify-between mb-4">
-                <div className="flex-1"><div className="flex items-center gap-2 mb-2"><span className="text-sm font-medium text-indigo-600">{questionStatus === 'intro' ? 'Introduction Phase' : 'Project Discussion'}</span><span className="text-xs text-gray-500">Question {questionNumber}</span></div><h2 className="text-lg font-semibold text-gray-900 leading-relaxed">{currentQuestion}</h2></div>
+                <div className="flex-1"><div className="flex items-center gap-2 mb-2"><span className="text-sm font-medium text-indigo-600">{questionStatus === 'intro' ? 'Introduction Phase' : questionStatus === 'project' ? 'Project Discussion' : 'Core Subject'}</span><span className="text-xs text-gray-500">Question {questionNumber}</span></div><h2 className="text-lg font-semibold text-gray-900 leading-relaxed">{currentQuestion}</h2></div>
                 <button onClick={() => speakText(currentQuestion)} disabled={isSpeaking} className={`ml-4 p-3 rounded-xl transition-all duration-200 ${isSpeaking ? 'bg-gradient-to-r from-emerald-100 to-teal-100 text-emerald-600 scale-105' : 'bg-white hover:bg-gray-50 text-gray-600 hover:scale-105'} shadow-md border border-gray-200`} title="Read question aloud">{isSpeaking ? <Pause className="w-5 h-5" /> : <Volume2 className="w-5 h-5" />}</button>
               </div>
             </section>

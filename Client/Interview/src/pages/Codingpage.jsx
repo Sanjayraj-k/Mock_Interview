@@ -17,7 +17,7 @@ const CompetitiveCodingPlatform = () => {
   const [showFinalScore, setShowFinalScore] = useState(false);
 
   const navigate = useNavigate(); // Added navigate hook
-  const API_BASE = 'http://localhost:3000';
+  const API_BASE = 'https://mock-interview-1-sbv5.onrender.com';
 
   const languages = [
     { value: 'java', label: 'Java', icon: '☕' },
@@ -153,7 +153,7 @@ const CompetitiveCodingPlatform = () => {
     setShowFinalScore(false);
     try {
       const candidateData = JSON.parse(localStorage.getItem('candidate')) || {};
-      const response = await fetch('http://localhost:5000/api/round2/results', {
+      const response = await fetch('https://mock-interview-befx.onrender.com/api/round2/results', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
