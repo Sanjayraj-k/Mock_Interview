@@ -10,13 +10,20 @@ import json
 
 app = Flask(__name__)
 # This allows your React app at localhost:5173 to communicate with your Flask server
-CORS(app, resources={r"/api/*": {"origins": "http://localhost:5173"}})
+import os
+from flask_cors import CORS
+from pymongo import MongoClient
 
-# --- Database Connection ---
-# Make sure your MongoDB server is running
-mongo_uri = "mongodb://localhost:27017/"
+# --- CORS setup ---
+CORS(app, resources={r"/api/*": {"origins": "https://graceful-fox-4182dd.netlify.app"}})
+
+# --- Database connection ---
+mongo_uri = os.environ.get("MONGO_URI", "mongodb://localhost:27017/")
+db_name = os.environ.get("DB_NAME", "hrDashboard")
+
 client = MongoClient(mongo_uri)
-db = client['hrDashboard']  # The database name
+db = client[db_name]
+
 
 # --- Helper Functions ---
 def is_valid_email(email):
