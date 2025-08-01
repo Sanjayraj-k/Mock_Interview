@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
-import { User } from 'lucide-react';
 import { Link, useNavigate } from 'react-router-dom';
+import hrImage from '../images/hrlogin.png'; // Adjust path as needed
 
 export default function Signup() {
   const [signupForm, setSignupForm] = useState({ email: '', password: '' });
@@ -13,7 +13,7 @@ export default function Signup() {
       setError('');
       const response = await fetch('http://localhost:5000/api/signup', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 'Content-Type': 'application/json'},
         body: JSON.stringify(signupForm)
       });
       const data = await response.json();
@@ -25,18 +25,24 @@ export default function Signup() {
   };
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-blue-600 via-purple-600 to-blue-800 flex items-center justify-center p-4">
-      <div className="bg-white rounded-2xl shadow-2xl p-8 w-full max-w-md">
+    <div className="min-h-screen bg-white flex items-center justify-center p-4">
+      <div className="bg-white rounded-2xl shadow-2xl p-8 w-full max-w-md border border-gray-100">
+        
+        {/* Logo Section */}
         <div className="text-center mb-8">
-          <div className="inline-flex items-center justify-center w-16 h-16 bg-gradient-to-r from-blue-500 to-purple-600 rounded-2xl mb-4">
-            <User className="w-8 h-8 text-white" />
-          </div>
+          <img
+            src={hrImage}
+            alt="HR Portal"
+            className="w-40 h-40 mx-auto mb-4 object-contain rounded-2xl shadow"
+          />
           <h1 className="text-2xl font-bold text-gray-900 mb-2">HR Signup Portal</h1>
           <p className="text-gray-600">AI Mock Interview Platform</p>
         </div>
         
+        {/* Form Section */}
         <form onSubmit={handleSignup} className="space-y-6">
           {error && <p className="text-red-600 text-sm">{error}</p>}
+          
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-2">Email Address</label>
             <input
@@ -69,6 +75,7 @@ export default function Signup() {
           </button>
         </form>
         
+        {/* Footer */}
         <p className="text-center text-sm text-gray-600 mt-4">
           Already have an account?{' '}
           <Link to="/hr/login" className="text-blue-600 hover:underline">
