@@ -60,7 +60,7 @@ const AdvancedFormMonitoringSystem = () => {
       setLoadingQuestions(true);
       setQuestionError(null);
 
-      const response = await fetch('https://mock-interview-befx.onrender.com/api/get-random-questions', {
+      const response = await fetch('http://localhost:5000/api/get-random-questions', {
         method: 'GET',
         headers: {
           'Content-Type': 'application/json',
@@ -153,7 +153,7 @@ const AdvancedFormMonitoringSystem = () => {
 
       console.log('Sending result data:', resultData); // Debug log
 
-      const response = await fetch('https://mock-interview-befx.onrender.com/api/submit-results', {
+      const response = await fetch('http://localhost:5000/api/submit-results', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',

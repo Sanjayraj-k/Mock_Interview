@@ -15,7 +15,7 @@ from flask_cors import CORS
 from pymongo import MongoClient
 
 # --- CORS setup ---
-CORS(app, resources={r"/api/*": {"origins": "https://graceful-fox-4182dd.netlify.app"}})
+CORS(app, resources={r"/api/*": {"origins": "http://localhost:5173"}})
 
 # --- Database connection ---
 mongo_uri = os.environ.get("MONGO_URI", "mongodb://localhost:27017/")

@@ -1,0 +1,67 @@
+
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Company Data Fetcher</title>
+    <style>
+        body { font-family: Arial, sans-serif; margin: 20px; }
+        .container { max-width: 800px; margin: auto; }
+        input { padding: 5px; margin: 5px; }
+        button { padding: 5px 10px; }
+        #result { margin-top: 20px; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h2>Fetch Company Data</h2>
+        <input type="text" id="domain" placeholder="Enter domain (e.g., microsoft.com)" value="microsoft.com">
+        <button onclick="fetchCompanyData()">Fetch Data</button>
+        <div id="result"></div>
+    </div>
+
+    <script>
+        async function fetchCompanyData() {
+            const domain = document.getElementById('domain').value;
+            const resultDiv = document.getElementById('result');
+
+            if (!domain) {
+                resultDiv.innerHTML = '<p>Please enter a domain.</p>';
+                return;
+            }
+
+            try {
+                const response = await fetch('http://localhost:5000/api/company', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ domain })
+                });
+
+                if (!response.ok) {
+                    throw new Error(`HTTP error! status: ${response.status}`);
+                }
+
+                const data = await response.json();
+                if (data.error) {
+                    resultDiv.innerHTML = `<p>Error: ${data.error}</p>`;
+                } else {
+                    const company = data.data;
+                    resultDiv.innerHTML = `
+                        <h3>${company.name}</h3>
+                        <p><strong>Description:</strong> ${company.description}</p>
+                        <p><strong>Employees:</strong> ${company.employees}</p>
+                        <p><strong>Founded:</strong> ${company.founded}</p>
+                        <p><strong>Industry:</strong> ${company.mainIndustry} - ${company.subIndustry}</p>
+                        <p><strong>Location:</strong> ${company.location.fullLocation}</p>
+                        <p><strong>Website:</strong> <a href="${company.website}" target="_blank">${company.website}</a></p>
+                        <img src="${company.logoUrl}" alt="${company.name} Logo" style="max-width: 200px;">
+                    `;
+                }
+            } catch (error) {
+                resultDiv.innerHTML = `<p>Error: ${error.message}</p>`;
+            }
+        }
+    </script>
+</body>
+</html>

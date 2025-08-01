@@ -1,0 +1,17 @@
+node_modules
+.env
+env
+audio
+temp
+uploads
+aap.py
+coding.py
+facetrack.py
+graph.py
+inter.py
+interview.py
+langchain_graph
+requirements.txt
+safety.py
+server.txt
+package.txt

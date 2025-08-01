@@ -1,0 +1,14 @@
+2025-07-26 12:52:41,424 - INFO - Fetching employee profiles for company: https://www.linkedin.com/company/google/
+2025-07-26 12:52:41,424 - INFO - Starting Apify run for https://www.linkedin.com/company/google/
+2025-07-26 12:52:42,568 - ERROR - Failed to start Apify run: {
+  "error": {
+    "type": "page-not-found",
+    "message": "We have bad news: there is no API endpoint at this URL. Did you specify it correctly?"
+  }
+}
+2025-07-26 12:52:42,569 - ERROR - Error fetching profiles: Failed to start Apify run: {
+  "error": {
+    "type": "page-not-found",
+    "message": "We have bad news: there is no API endpoint at this URL. Did you specify it correctly?"
+  }
+}

@@ -148,7 +148,7 @@ const codeTemplates = {
     return 0;
 }`,
     python: `def candy(ratings):
-    # Write your code here
+    // Write your code here
     return 0`,
     cpp: `int candy(vector<int>& ratings) {
     // Write your code here
@@ -165,7 +165,7 @@ const codeTemplates = {
     return 0;
 }`,
     python: `def lengthOfLIS(nums):
-    # Write your code here
+    // Write your code here
     return 0`,
     cpp: `int lengthOfLIS(vector<int>& nums) {
     // Write your code here

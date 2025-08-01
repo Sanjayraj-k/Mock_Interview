@@ -31,7 +31,7 @@ function StudentLogin() {
     setError("");
 
     try {
-      const res = await axios.post("https://mock-interview-befx.onrender.com/api/candidate/login", {
+      const res = await axios.post("http://localhost:5000/api/candidate/login", {
         email: form.email,
         password: form.password,
         rollNo: form.rollNo,
