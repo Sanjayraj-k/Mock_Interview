@@ -21,7 +21,7 @@ const WebCam = () => {
   const canvasRef = useRef(null);
   const streamRef = useRef(null);
   const intervalRef = useRef(null);
-  const apiUrl = 'http://localhost:4001';
+  const apiUrl = 'https://facetrack-phrf.onrender.com';
 
   const startProctoring = async () => {
     try {

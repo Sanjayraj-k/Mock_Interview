@@ -3,7 +3,7 @@ import axios from "axios";
 import { useNavigate } from "react-router-dom";
 import { Mail, Lock, Hash, UserCheck, Eye, EyeOff } from "lucide-react";
 import { AuthContext } from "../context/AuthContext"; // Adjust path as needed
-
+import studentImage from '../assets/stud.png'; 
 function StudentLogin() {
   const [form, setForm] = useState({
     email: "",
@@ -21,7 +21,6 @@ function StudentLogin() {
 
   const handleChange = (e) => {
     setForm({ ...form, [e.target.name]: e.target.value });
-    // Clear error when user starts typing
     if (error) setError("");
   };
 
@@ -66,10 +65,9 @@ function StudentLogin() {
     <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-blue-50 to-indigo-100">
       <div className="bg-white p-8 rounded-2xl shadow-xl w-full max-w-md">
         <div className="text-center mb-8">
-          <div className="w-16 h-16 bg-gradient-to-r from-blue-500 to-indigo-600 rounded-full flex items-center justify-center mx-auto mb-4">
-            <svg className="w-8 h-8 text-white" fill="currentColor" viewBox="0 0 24 24">
-              <path d="M12 12c2.21 0 4-1.79 4-4s-1.79-4-4-4-4 1.79-4 4 1.79 4 4 4zm0 2c-2.67 0-8 1.34-8 4v2h16v-2c0-2.66-5.33-4-8-4z"/>
-            </svg>
+          
+        <div className="inline-flex items-center justify-center w-25 h-25 mb-4">
+        <img src={studentImage} alt="HR Portal" className="w-28 h-28 object-contain rounded-2xl shadow" />
           </div>
           <h2 className="text-3xl font-bold text-gray-800">Candidate Login</h2>
           <p className="text-gray-600 mt-2">Enter your credentials to access the portal</p>

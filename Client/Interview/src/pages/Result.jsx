@@ -18,7 +18,7 @@ const QuizResultsPage = () => {
     try {
       // Step 1: Fetch the latest form_id
       console.log('Fetching latest form ID...');
-      const formIdResponse = await fetch('http://localhost:5000/latest-form-id', {
+      const formIdResponse = await fetch('https://mock-interview-befx.onrender.com/latest-form-id', {
         method: 'GET',
         headers: { 'Content-Type': 'application/json' },
       });
@@ -45,7 +45,7 @@ const QuizResultsPage = () => {
       };
       console.log('Request body:', requestBody);
 
-      const evaluationResponse = await fetch('http://localhost:5000/evaluate-quiz', {
+      const evaluationResponse = await fetch('https://mock-interview-befx.onrender.com/evaluate-quiz', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(requestBody),

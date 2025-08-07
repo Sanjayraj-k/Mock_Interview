@@ -193,7 +193,7 @@ const CompetitiveCodingPlatform = () => {
     exitFullScreen();
     try {
       const candidateData = JSON.parse(localStorage.getItem('candidate')) || {};
-      const response = await fetch('http://localhost:5000/api/round2/results', {
+      const response = await fetch('https://app-py-jzfp.onrender.com/api/round2/results', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({

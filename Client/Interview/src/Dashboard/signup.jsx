@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { User } from 'lucide-react';
 import { Link, useNavigate } from 'react-router-dom';
-
+import hrImage from '../assets/hr.png'; 
 export default function Signup() {
   const [signupForm, setSignupForm] = useState({ email: '', password: '' });
   const [error, setError] = useState('');
@@ -13,7 +13,7 @@ export default function Signup() {
       setError('');
       const response = await fetch('http://localhost:5000/api/signup', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 'Content-Type': 'application/json'},
         body: JSON.stringify(signupForm)
       });
       const data = await response.json();
@@ -28,8 +28,8 @@ export default function Signup() {
     <div className="min-h-screen bg-gradient-to-br from-blue-600 via-purple-600 to-blue-800 flex items-center justify-center p-4">
       <div className="bg-white rounded-2xl shadow-2xl p-8 w-full max-w-md">
         <div className="text-center mb-8">
-          <div className="inline-flex items-center justify-center w-16 h-16 bg-gradient-to-r from-blue-500 to-purple-600 rounded-2xl mb-4">
-            <User className="w-8 h-8 text-white" />
+        <div className="inline-flex items-center justify-center w-25 h-25 mb-4">
+            <img src={hrImage} alt="HR Portal" className="w-28 h-28 object-contain rounded-2xl shadow" />
           </div>
           <h1 className="text-2xl font-bold text-gray-900 mb-2">HR Signup Portal</h1>
           <p className="text-gray-600">AI Mock Interview Platform</p>

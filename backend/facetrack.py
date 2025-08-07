@@ -4,14 +4,17 @@ import cv2
 import numpy as np
 import base64
 import time
-import winsound
-from math import hypot
 import logging
 import sys
+from pygame import mixer
+import os
 
 # Set up logging
 logging.basicConfig(level=logging.DEBUG)
 logger = logging.getLogger(__name__)
+
+# Initialize pygame mixer for alerts
+mixer.init()
 
 app = Flask(__name__)
 CORS(app, resources={r"/*": {"origins": "*"}})
@@ -45,12 +48,31 @@ def play_alert():
     global ALERT_ENABLED
     if ALERT_ENABLED:
         try:
-            winsound.Beep(1000, 300)
-            logger.info("Alert sound played")
+            sound_file = os.path.join(os.path.dirname(__file__), "alert.mp3")
+            logger.info(f"Sound alert requested at: {sound_file}")
+            if os.path.exists(sound_file):
+                # Skip actual playback on server
+                logger.info("Sound alert skipped (cloud server)")
+            else:
+                logger.warning("Alert sound file not found")
+        except Exception as e:
+            logger.error(f"Failed to process alert: {e}")
+    logger.warning("ALERT: Not looking at camera!")
+
+    global ALERT_ENABLED
+    if ALERT_ENABLED:
+        try:
+            sound_file = os.path.join(os.path.dirname(__file__), "alert.mp3")  # Relative path
+            logger.info(f"Checking for sound file at: {sound_file}")
+            if os.path.exists(sound_file):
+                mixer.music.load(sound_file)
+                mixer.music.play()
+                logger.info("Alert sound played")
+            else:
+                logger.error("Alert sound file not found")
         except Exception as e:
             logger.error(f"Failed to play alert: {e}")
     logger.warning("ALERT: Not looking at camera!")
-
 def detect_gaze(eye_frame):
     try:
         height, width = eye_frame.shape[:2]
@@ -205,5 +227,5 @@ def toggle_alerts():
     return jsonify({"status": f"Alerts {status}"}), 200
 
 if __name__ == '__main__':
-    logger.info("Starting Flask server on port 4000")
+    logger.info("Starting Flask server in development mode")
     app.run(host='0.0.0.0', port=4001, debug=True, use_reloader=False)

@@ -7,12 +7,15 @@ export const AuthProvider = ({ children }) => {
   const [hrData, setHRData] = useState(null);
   const [isCandidateAuthenticated, setIsCandidateAuthenticated] = useState(false);
   const [candidateData, setCandidateData] = useState(null);
+  const [isTeacherAuthenticated, setIsTeacherAuthenticated] = useState(false); // New: Teacher auth state
+  const [teacherData, setTeacherData] = useState(null); // New: Teacher data state
 
   // HR Login Logic
   const handleHRLogin = (data) => {
     console.log('Handling HR login with data:', data); // Debug
     setIsHRAuthenticated(true);
     setHRData(data);
+    localStorage.setItem('hr', JSON.stringify(data)); // Sync with localStorage
     console.log('Auth state updated:', { isHRAuthenticated: true, hrData: data }); // Debug
   };
 
@@ -20,6 +23,7 @@ export const AuthProvider = ({ children }) => {
     console.log('Handling HR logout'); // Debug
     setIsHRAuthenticated(false);
     setHRData(null);
+    localStorage.removeItem('hr'); // Clear from localStorage
   };
 
   // Candidate Login Logic
@@ -27,6 +31,7 @@ export const AuthProvider = ({ children }) => {
     console.log('Handling Candidate login with data:', data); // Debug
     setIsCandidateAuthenticated(true);
     setCandidateData(data);
+    localStorage.setItem('candidate', JSON.stringify(data)); // Sync with localStorage
     console.log('Auth state updated:', { isCandidateAuthenticated: true, candidateData: data }); // Debug
   };
 
@@ -34,12 +39,31 @@ export const AuthProvider = ({ children }) => {
     console.log('Handling Candidate logout'); // Debug
     setIsCandidateAuthenticated(false);
     setCandidateData(null);
+    localStorage.removeItem('candidate'); // Clear from localStorage
+  };
+
+  // Teacher Login Logic (New)
+  const handleTeacherLogin = (data) => {
+    console.log('Handling Teacher login with data:', data); // Debug
+    setIsTeacherAuthenticated(true);
+    setTeacherData(data);
+    localStorage.setItem('teacher', JSON.stringify(data)); // Sync with localStorage
+    console.log('Auth state updated:', { isTeacherAuthenticated: true, teacherData: data }); // Debug
+  };
+
+  // Teacher Logout Logic (New)
+  const handleTeacherLogout = () => {
+    console.log('Handling Teacher logout'); // Debug
+    setIsTeacherAuthenticated(false);
+    setTeacherData(null);
+    localStorage.removeItem('teacher'); // Clear from localStorage
   };
 
   // Sync with localStorage
   useEffect(() => {
     const storedHRUser = localStorage.getItem('hr') ? JSON.parse(localStorage.getItem('hr')) : null;
     const storedCandidate = localStorage.getItem('candidate') ? JSON.parse(localStorage.getItem('candidate')) : null;
+    const storedTeacher = localStorage.getItem('teacher') ? JSON.parse(localStorage.getItem('teacher')) : null; // New: Teacher sync
 
     if (storedHRUser) {
       setIsHRAuthenticated(true);
@@ -48,6 +72,10 @@ export const AuthProvider = ({ children }) => {
     if (storedCandidate) {
       setIsCandidateAuthenticated(true);
       setCandidateData(storedCandidate);
+    }
+    if (storedTeacher) {
+      setIsTeacherAuthenticated(true);
+      setTeacherData(storedTeacher);
     }
   }, []);
 
@@ -61,6 +89,10 @@ export const AuthProvider = ({ children }) => {
       candidateData,
       handleCandidateLogin,
       handleCandidateLogout,
+      isTeacherAuthenticated, // New
+      teacherData, // New
+      handleTeacherLogin, // New
+      handleTeacherLogout, // New
     }}>
       {children}
     </AuthContext.Provider>
