@@ -1,67 +1,27 @@
-
 <!DOCTYPE html>
 <html lang="en">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Company Data Fetcher</title>
-    <style>
-        body { font-family: Arial, sans-serif; margin: 20px; }
-        .container { max-width: 800px; margin: auto; }
-        input { padding: 5px; margin: 5px; }
-        button { padding: 5px 10px; }
-        #result { margin-top: 20px; }
-    </style>
+    <title>ATS Score Checker</title>
+    <script src="https://cdn.tailwindcss.com"></script>
 </head>
-<body>
-    <div class="container">
-        <h2>Fetch Company Data</h2>
-        <input type="text" id="domain" placeholder="Enter domain (e.g., microsoft.com)" value="microsoft.com">
-        <button onclick="fetchCompanyData()">Fetch Data</button>
-        <div id="result"></div>
+<body class="bg-gray-100 flex items-center justify-center min-h-screen">
+    <div class="bg-white p-8 rounded-lg shadow-lg w-full max-w-2xl">
+        <h1 class="text-3xl font-bold mb-6 text-center">ATS Score Checker</h1>
+        <form action="/upload" method="post" enctype="multipart/form-data" class="space-y-6">
+            <div>
+                <label for="resume" class="block text-lg font-medium text-gray-700">Upload Resume (PDF or Text)</label>
+                <input type="file" name="resume" accept=".pdf" class="mt-2 block w-full border border-gray-300 rounded-md p-2">
+                <textarea name="resume_text" rows="5" placeholder="Or paste resume text here..." class="mt-2 block w-full border border-gray-300 rounded-md p-2"></textarea>
+            </div>
+            <div>
+                <label for="job_description" class="block text-lg font-medium text-gray-700">Upload Job Description (PDF or Text)</label>
+                <input type="file" name="job_description" accept=".pdf" class="mt-2 block w-full border border-gray-300 rounded-md p-2">
+                <textarea name="job_desc_text" rows="5" placeholder="Or paste job description text here..." class="mt-2 block w-full border border-gray-300 rounded-md p-2"></textarea>
+            </div>
+            <button type="submit" class="w-full bg-blue-600 text-white py-2 rounded-md hover:bg-blue-700">Check ATS Score</button>
+        </form>
     </div>
-
-    <script>
-        async function fetchCompanyData() {
-            const domain = document.getElementById('domain').value;
-            const resultDiv = document.getElementById('result');
-
-            if (!domain) {
-                resultDiv.innerHTML = '<p>Please enter a domain.</p>';
-                return;
-            }
-
-            try {
-                const response = await fetch('http://localhost:5000/api/company', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ domain })
-                });
-
-                if (!response.ok) {
-                    throw new Error(`HTTP error! status: ${response.status}`);
-                }
-
-                const data = await response.json();
-                if (data.error) {
-                    resultDiv.innerHTML = `<p>Error: ${data.error}</p>`;
-                } else {
-                    const company = data.data;
-                    resultDiv.innerHTML = `
-                        <h3>${company.name}</h3>
-                        <p><strong>Description:</strong> ${company.description}</p>
-                        <p><strong>Employees:</strong> ${company.employees}</p>
-                        <p><strong>Founded:</strong> ${company.founded}</p>
-                        <p><strong>Industry:</strong> ${company.mainIndustry} - ${company.subIndustry}</p>
-                        <p><strong>Location:</strong> ${company.location.fullLocation}</p>
-                        <p><strong>Website:</strong> <a href="${company.website}" target="_blank">${company.website}</a></p>
-                        <img src="${company.logoUrl}" alt="${company.name} Logo" style="max-width: 200px;">
-                    `;
-                }
-            } catch (error) {
-                resultDiv.innerHTML = `<p>Error: ${error.message}</p>`;
-            }
-        }
-    </script>
 </body>
 </html>

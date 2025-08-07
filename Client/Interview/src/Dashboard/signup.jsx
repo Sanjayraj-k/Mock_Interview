@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
-import hrImage from '../images/hrlogin.png'; // Adjust path as needed
+import hrImage from '../images/hrlogin.png'; 
 
 export default function Signup() {
   const [signupForm, setSignupForm] = useState({ email: '', password: '' });

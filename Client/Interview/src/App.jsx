@@ -15,7 +15,14 @@ import CodingPage from './pages/Codingpage.jsx';
 import Co from './pages/co.jsx'; 
 import Round1 from './pages/Round1.jsx';
 import Interview from './pages/Interview.jsx'; // Assuming this is the interview page
-import Uploadpage from './pages/Uploadresumepage.jsx'; // Adjusted import for clarity
+import Uploadpage from './student/upload.jsx'; // Assuming this is the upload page
+import Ats from './pages/ats.jsx';
+import StudentLandingpage from './Auth/StudentLandingpage.jsx'; // Assuming this is the landing page for students
+import QuestionBank from './pages/QuestionBank.jsx';
+import QuestionForum from './pages/QuestionForum.jsx'; // Assuming this is the question forum page
+// Assuming this is the question bank page
+// Assuming this is the ATS page
+// Adjusted import for clarity
 // Adjusted import for clarity
 // Assuming this is the code editor page
 // Protected Route for HR
@@ -60,6 +67,15 @@ function App() {
             <Route path="/candidate">
               <Route index element={<Navigate to="/candidate/login" replace />} />
               <Route path="login" element={<StudentLogin />} />
+            </Route>
+            <Route path="/student">
+              
+              <Route path="landing" element={<StudentLandingpage/>} />
+              <Route path="questionBank" element={<QuestionBank/>}/>
+              <Route path="ats" element={<Ats />} />
+              <Route path="questionforum" element={<QuestionForum/>} />
+              <Route path="upload" element={<Uploadpage />} />
+              
             </Route>
 
             {/* 4. Protected Candidate Pages */}

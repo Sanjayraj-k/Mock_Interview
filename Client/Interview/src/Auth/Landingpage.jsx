@@ -76,7 +76,6 @@ export default function LandingPage() {
             <span className="absolute -bottom-2 left-1/2 transform -translate-x-1/2 w-24 h-1 bg-gradient-to-r from-indigo-400 to-purple-400 rounded-full"></span>
           </p>
         </div>
-
         {/* Portal Cards */}
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-8 w-full max-w-7xl">
           {/* HR Portal Card */}
@@ -102,17 +101,17 @@ export default function LandingPage() {
               </div>
 
               <h2 className="text-3xl font-bold text-gray-800 mb-4 relative">
-                HR & Recruiters
+                Teacher
                 <span className="absolute -bottom-1 left-1/2 transform -translate-x-1/2 w-0 h-0.5 bg-gradient-to-r from-purple-500 to-indigo-600 group-hover:w-full transition-all duration-500"></span>
               </h2>
               
               <p className="text-gray-600 mb-8 leading-relaxed text-lg">
-                Manage job roles, review interviews, and analyze candidate performance with powerful AI insights and analytics.
+                Manage job roles, review interviews, and analyze Student performance with powerful AI insights and analytics.
               </p>
               
               <div className="w-full bg-gradient-to-r from-purple-500 to-indigo-600 text-white py-4 px-6 rounded-2xl font-semibold text-lg group-hover:from-purple-600 group-hover:to-indigo-700 transition-all duration-500 shadow-lg group-hover:shadow-xl relative overflow-hidden">
                 <span className="relative z-10 flex items-center justify-center gap-2">
-                  HR Portal
+                  Teacher Portal
                   <ArrowRight className="w-5 h-5 transform group-hover:translate-x-1 transition-transform duration-300" />
                 </span>
                 <div className="absolute inset-0 bg-gradient-to-r from-white/10 to-white/20 opacity-0 group-hover:opacity-100 transition-opacity duration-500"></div>
@@ -122,7 +121,7 @@ export default function LandingPage() {
 
           {/* Student Portal Card */}
           <button
-            onClick={() => window.location.href = '/student/login'}
+            onClick={() => window.location.href = '/student/landing'}
             className="group relative bg-white/80 backdrop-blur-sm p-8 rounded-3xl shadow-xl hover:shadow-2xl transform hover:-translate-y-3 transition-all duration-700 border border-white/20 hover:border-emerald-200/50 overflow-hidden w-full"
           >
             {/* Animated Background */}
@@ -143,7 +142,7 @@ export default function LandingPage() {
               </div>
 
               <h2 className="text-3xl font-bold text-gray-800 mb-4 relative">
-                Student Portal
+                Student Pratice
                 <span className="absolute -bottom-1 left-1/2 transform -translate-x-1/2 w-0 h-0.5 bg-gradient-to-r from-emerald-500 to-teal-600 group-hover:w-full transition-all duration-500"></span>
               </h2>
               
@@ -184,7 +183,7 @@ export default function LandingPage() {
               </div>
 
               <h2 className="text-3xl font-bold text-gray-800 mb-4 relative">
-                For Candidates
+                Student Test
                 <span className="absolute -bottom-1 left-1/2 transform -translate-x-1/2 w-0 h-0.5 bg-gradient-to-r from-orange-500 to-pink-600 group-hover:w-full transition-all duration-500"></span>
               </h2>
               
