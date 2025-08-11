@@ -1,4 +1,4 @@
-from flask import Flask, jsonify, request, send_file
+from flask import Blueprint, jsonify, request, send_file
 from flask_cors import CORS
 from flask_pymongo import PyMongo
 from werkzeug.utils import secure_filename
@@ -8,19 +8,28 @@ import os
 import re
 from pathlib import Path
 
-app = Flask(__name__)
-CORS(app)
+# Blueprint for Question Bank
+questionbank_bp = Blueprint('questionbank', __name__, url_prefix='/questionbank')
+CORS(questionbank_bp)
 
-# Configuration
-app.config['MONGO_URI'] = 'mongodb://localhost:27017/interview_platform'
-app.config['MAX_CONTENT_LENGTH'] = 10 * 1024 * 1024  # 10MB max file size
-app.config['UPLOAD_FOLDER'] = 'uploads'
+# Configuration will be set in main app; defaults shown here for reference
+DEFAULT_MONGO_URI = 'mongodb://localhost:27017/interview_platform'
+DEFAULT_MAX_CONTENT_LENGTH = 10 * 1024 * 1024  # 10MB max file size
+DEFAULT_UPLOAD_FOLDER = 'uploads'
 
-# Initialize MongoDB
-mongo = PyMongo(app)
+# Initialize MongoDB (set in init_questionbank)
+mongo = None
 
 # Create uploads directory if it doesn't exist
-Path(app.config['UPLOAD_FOLDER']).mkdir(exist_ok=True)
+def init_questionbank(app):
+    """Initialize PyMongo and folders using the main Flask app config."""
+    global mongo
+    if mongo is None:
+        app.config.setdefault('MONGO_URI', DEFAULT_MONGO_URI)
+        app.config.setdefault('MAX_CONTENT_LENGTH', DEFAULT_MAX_CONTENT_LENGTH)
+        app.config.setdefault('UPLOAD_FOLDER', DEFAULT_UPLOAD_FOLDER)
+        Path(app.config['UPLOAD_FOLDER']).mkdir(exist_ok=True)
+        mongo = PyMongo(app)
 
 # Allowed file extensions
 ALLOWED_EXTENSIONS = {'pdf'}
@@ -179,7 +188,7 @@ def initialize_database():
     except Exception as e:
         print(f"Error initializing database: {e}")
 
-@app.route('/api/questions', methods=['GET'])
+@questionbank_bp.route('/api/questions', methods=['GET'])
 def get_questions():
     """Get all questions sorted by creation date (newest first)"""
     try:
@@ -198,7 +207,7 @@ def get_questions():
             'message': str(e)
         }), 500
 
-@app.route('/api/questions/<question_id>', methods=['GET'])
+@questionbank_bp.route('/api/questions/<question_id>', methods=['GET'])
 def get_question_by_id(question_id):
     """Get a specific question by ID"""
     try:
@@ -225,7 +234,7 @@ def get_question_by_id(question_id):
             'message': str(e)
         }), 500
 
-@app.route('/api/questions/text', methods=['POST'])
+@questionbank_bp.route('/api/questions/text', methods=['POST'])
 def create_text_question():
     """Create new text question"""
     try:
@@ -265,7 +274,7 @@ def create_text_question():
             'message': str(e)
         }), 500
 
-@app.route('/api/questions/pdf', methods=['POST'])
+@questionbank_bp.route('/api/questions/pdf', methods=['POST'])
 def create_pdf_question():
     """Create new PDF question"""
     try:
@@ -333,7 +342,7 @@ def create_pdf_question():
             'error': str(e)
         }), 500
 
-@app.route('/api/questions/<question_id>', methods=['PUT'])
+@questionbank_bp.route('/api/questions/<question_id>', methods=['PUT'])
 def update_question(question_id):
     """Update an existing question"""
     try:
@@ -365,7 +374,7 @@ def update_question(question_id):
             'message': str(e)
         }), 500
 
-@app.route('/api/questions/<question_id>', methods=['DELETE'])
+@questionbank_bp.route('/api/questions/<question_id>', methods=['DELETE'])
 def delete_question(question_id):
     """Delete a question from the database"""
     try:
@@ -403,7 +412,7 @@ def delete_question(question_id):
             'message': str(e)
         }), 500
 
-@app.route('/api/questions/<question_id>/views', methods=['PATCH'])
+@questionbank_bp.route('/api/questions/<question_id>/views', methods=['PATCH'])
 def update_question_views(question_id):
     """Increment question views"""
     try:
@@ -434,7 +443,7 @@ def update_question_views(question_id):
             'error': str(e)
         }), 500
 
-@app.route('/api/questions/<question_id>/download', methods=['GET'])
+@questionbank_bp.route('/api/questions/<question_id>/download', methods=['GET'])
 def download_pdf(question_id):
     """Download PDF file"""
     try:
@@ -469,7 +478,7 @@ def download_pdf(question_id):
             'error': str(e)
         }), 500
 
-@app.route('/api/health', methods=['GET'])
+@questionbank_bp.route('/api/health', methods=['GET'])
 def health_check():
     """Health check endpoint"""
     try:
@@ -486,31 +495,4 @@ def health_check():
             'message': str(e)
         }), 500
 
-@app.errorhandler(413)
-def too_large(e):
-    return jsonify({
-        'success': False,
-        'message': 'File size too large. Maximum size is 10MB.'
-    }), 413
-
-@app.errorhandler(404)
-def not_found(e):
-    return jsonify({
-        'success': False,
-        'message': 'Route not found'
-    }), 404
-
-@app.errorhandler(500)
-def internal_error(e):
-    return jsonify({
-        'success': False,
-        'message': 'Internal server error'
-    }), 500
-
-if __name__ == '__main__':
-    print("Starting Interview Platform API Server...")
-    print("Server running on http://localhost:5001")
-    print("MongoDB URI: mongodb://localhost:27017/interview_platform")
-    print("Upload folder: uploads/")
-    initialize_database()
-    app.run(debug=True, host='0.0.0.0', port=5001)  
+# Note: This module is registered and initialized by the main app

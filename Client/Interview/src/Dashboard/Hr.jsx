@@ -50,13 +50,13 @@ export default function HRDashboard() {
           const userEmail = hrData.email;
 
           // Fetch roles, passing hrEmail as a query parameter for filtering on the backend
-          const rolesResponse = await fetch(`https://app-py-jzfp.onrender.com/api/roles?hrEmail=${encodeURIComponent(userEmail)}`);
+          const rolesResponse = await fetch(`http://localhost:5000/api/roles?hrEmail=${encodeURIComponent(userEmail)}`);
           if (!rolesResponse.ok) throw new Error('Failed to fetch interview roles');
           const rolesData = await rolesResponse.json();
           setRoles(rolesData);
 
           // Fetch students, also filtered by hrEmail
-          const studentsResponse = await fetch(`https://app-py-jzfp.onrender.com/api/students?hrEmail=${encodeURIComponent(userEmail)}`);
+          const studentsResponse = await fetch(`http://localhost:5000/api/students?hrEmail=${encodeURIComponent(userEmail)}`);
           if (!studentsResponse.ok) throw new Error('Failed to fetch students');
           const studentsData = await studentsResponse.json();
           setStudents(studentsData);
@@ -81,7 +81,7 @@ export default function HRDashboard() {
     }
     try {
       setError('');
-      const response = await fetch('https://app-py-jzfp.onrender.com/api/roles', {
+      const response = await fetch('http://localhost:5000/api/roles', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ ...newRole, hrEmail: hrData.email }) // Add hrEmail to the payload
@@ -108,7 +108,7 @@ export default function HRDashboard() {
     }
     try {
       setError('');
-      const response = await fetch('https://app-py-jzfp.onrender.com/api/students', {
+      const response = await fetch('http://localhost:5000/api/students', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ ...newStudent, hrEmail: hrData.email }) // Add hrEmail to the payload
@@ -135,7 +135,7 @@ export default function HRDashboard() {
     try {
       // Fetch test results for this specific role. The backend now aggregates the data.
       const response = await fetch(
-        `https://app-py-jzfp.onrender.com/api/test-results?role=${encodeURIComponent(role.title)}`
+        `http://localhost:5000/api/test-results?role=${encodeURIComponent(role.title)}`
       );
       
       if (!response.ok) {

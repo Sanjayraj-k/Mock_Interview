@@ -16,7 +16,7 @@ const CompetitiveCodingPlatform = () => {
   const [scores, setScores] = useState({ 'gas-station': 0, 'candy': 0, 'longest-increasing-subsequence': 0 });
   const [showFinalScore, setShowFinalScore] = useState(false);
 
-  const navigate = useNavigate();
+  const navigate = useNavigate(); // Added navigate hook
   const API_BASE = 'http://localhost:3000';
 
   const languages = [
@@ -31,44 +31,6 @@ const CompetitiveCodingPlatform = () => {
     { id: 'candy', title: 'Candy', number: 135 },
     { id: 'longest-increasing-subsequence', title: 'Longest Increasing Subsequence', number: 300 },
   ];
-
-  // Enter full-screen mode when component mounts
-  useEffect(() => {
-    const enterFullScreen = () => {
-      const element = document.documentElement; // Full document
-      if (element.requestFullscreen) {
-        element.requestFullscreen();
-      } else if (element.mozRequestFullScreen) { // Firefox
-        element.mozRequestFullScreen();
-      } else if (element.webkitRequestFullscreen) { // Chrome, Safari, Opera
-        element.webkitRequestFullscreen();
-      } else if (element.msRequestFullscreen) { // IE/Edge
-        element.msRequestFullscreen();
-      }
-    };
-
-    enterFullScreen();
-
-    // Cleanup: Exit full-screen on component unmount (optional)
-    return () => {
-      if (document.fullscreenElement || document.webkitFullscreenElement || document.mozFullScreenElement || document.msFullscreenElement) {
-        exitFullScreen();
-      }
-    };
-  }, []);
-
-  // Function to exit full-screen mode
-  const exitFullScreen = () => {
-    if (document.exitFullscreen) {
-      document.exitFullscreen();
-    } else if (document.mozCancelFullScreen) { // Firefox
-      document.mozCancelFullScreen();
-    } else if (document.webkitExitFullscreen) { // Chrome, Safari, Opera
-      document.webkitExitFullscreen();
-    } else if (document.msExitFullscreen) { // IE/Edge
-      document.msExitFullscreen();
-    }
-  };
 
   useEffect(() => {
     loadProblem();
@@ -189,21 +151,20 @@ const CompetitiveCodingPlatform = () => {
 
   const handleFinishTest = async () => {
     setShowFinalScore(false);
-    // Exit full-screen mode
-    exitFullScreen();
     try {
       const candidateData = JSON.parse(localStorage.getItem('candidate')) || {};
-      const response = await fetch('https://app-py-jzfp.onrender.com/api/round2/results', {
+      const response = await fetch('http://localhost:5000/api/round2/results', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          candidateId: candidateData.id || 'N/A',
-          candidateEmail: candidateData.email || 'N/A',
+          scores,
+          totalScore,
+          candidateId: candidateData.id,
+          candidateName: candidateData.name,
+          candidateEmail: candidateData.email,
           candidateRoll: candidateData.role || 'candidate',
           CandidateRollno: candidateData.rollNo || 'N/A',
           submissionDate: new Date().toISOString(),
-          score: totalScore,
-          totalScore: 30,
         }),
       });
 

@@ -53,7 +53,7 @@ const WebCam = () => {
   const streamRef = useRef(null);
   const intervalRef = useRef(null);
   
-  const apiUrl = 'http://localhost:8000/api';
+  const apiUrl = 'http://localhost:5000/interview/api';
 
   const startProctoring = async () => {
     try {
@@ -139,7 +139,7 @@ const WebCam = () => {
           </div>
         </div>
         {error && <div className="mb-6 p-4 bg-red-50 border border-red-200 rounded-xl flex items-center text-red-700"><AlertCircle className="mr-3 w-5 h-5" /><p className="text-sm">{error}</p></div>}
-        <div className="space-y-4">localhost
+        <div className="space-y-4">
           <div className="relative">
             <div className={`relative aspect-video bg-gray-900 rounded-xl overflow-hidden transition-all duration-300 ${proctorData.violation_detected ? 'ring-4 ring-red-400 ring-opacity-50 shadow-lg shadow-red-400/20' : 'ring-2 ring-indigo-200 ring-opacity-30'}`}>
               <video ref={videoRef} className="w-full h-full object-cover" autoPlay playsInline muted />
@@ -187,8 +187,8 @@ export default function InterviewDashboard() {
   const [error, setError] = useState('');
   
   const recognitionRef = useRef(null);
-  const apiUrl = 'http://localhost:8000/api';
-  const resultsApiUrl = 'http://localhost:8000/api';
+  const apiUrl = 'http://localhost:5000/interview/api';
+  const resultsApiUrl = 'http://localhost:5000/api';
 
   useEffect(() => {
     let timer;

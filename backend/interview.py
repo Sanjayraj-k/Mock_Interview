@@ -7,17 +7,12 @@ from uuid import uuid4
 import base64
 import numpy as np
 import cv2
-from flask import Flask, request, jsonify, session
-from flask_cors import CORS
+from flask import Blueprint, request, jsonify, session
 from langchain_groq import ChatGroq
 from langchain.prompts import PromptTemplate
-from langchain.schema import HumanMessage, AIMessage
+from langchain.chains import LLMChain
+from langchain.memory import ConversationBufferMemory
 from dotenv import load_dotenv
-from collections import defaultdict
-from typing import Dict, List, Any, Optional, TypedDict
-from langgraph.graph import StateGraph, END
-from langgraph.checkpoint.memory import MemorySaver
-import json
 
 # Windows-specific audio (optional)
 try:
@@ -31,20 +26,10 @@ except ImportError:
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 logger = logging.getLogger(__name__)
 
-# Initialize Flask app
-app = Flask(__name__)
-app.secret_key = os.getenv("FLASK_SECRET_KEY", str(uuid4()))
-CORS(app, resources={
-    r"/api/*": {
-        "origins": [
-            "https://mock-interview-flax.vercel.app",
-            "http://localhost:5173"
-        ],
-        "supports_credentials": True
-    }
-})
+# Blueprint for Interview & Proctoring
+interview_bp = Blueprint('interview', __name__, url_prefix='/interview')
 
-logger.info("Starting structured interview Flask server with LangGraph...")
+logger.info("Starting combined proctoring and interview Flask server...")
 
 # Load environment variables
 load_dotenv()
@@ -55,7 +40,7 @@ if not GROQ_API_KEY:
 
 # Initialize Groq LLM
 try:
-    llm = ChatGroq(model_name="llama3-70b-8192", groq_api_key=GROQ_API_KEY, temperature=0.7, max_tokens=300)
+    llm = ChatGroq(model_name="llama3-70b-8192", groq_api_key=GROQ_API_KEY, temperature=0.7, max_tokens=200)
     logger.info("Groq LLM initialized successfully")
 except Exception as e:
     logger.error(f"Error initializing Groq LLM: {str(e)}", exc_info=True)
@@ -73,420 +58,196 @@ except Exception as e:
     face_cascade = None
     eye_cascade = None
 
-# === LANGGRAPH STATE DEFINITION ===
-class InterviewState(TypedDict):
-    session_id: str
-    current_stage: str
-    question_count: int
-    total_questions: int
-    conversation_history: List[Dict[str, str]]
-    candidate_profile: Dict[str, Any]
-    stage_progress: Dict[str, int]
-    responses_quality: Dict[str, str]
-    current_question: str
-    last_response: str
-    interview_complete: bool
-    evaluation_ready: bool
-    follow_up_needed: bool
-    clarification_count: int
+# === QUESTION GENERATION & EVALUATION ===
+memory_store = {}
 
-# === INTERVIEW STAGES AND TEMPLATES ===
-INTERVIEW_STAGES = {
-    "introduction": {"max_questions": 2, "required": True},
-    "background": {"max_questions": 3, "required": True},
-    "technical_experience": {"max_questions": 4, "required": True},
-    "project_deep_dive": {"max_questions": 3, "required": True},
-    "problem_solving": {"max_questions": 2, "required": True},
-    "behavioral": {"max_questions": 2, "required": True},
-    "closing": {"max_questions": 1, "required": True}
-}
-
-# Structured prompts for each stage
-STAGE_PROMPTS = {
-    "introduction": PromptTemplate(
-        input_variables=["conversation_history", "question_number"],
-        template="""You are conducting a professional technical interview. This is the introduction stage (Question {question_number}/2).
-
-Conversation so far: {conversation_history}
-
-Ask a warm, professional introduction question to understand the candidate's background. Examples:
-- "Could you start by telling me about yourself and your journey in technology?"
-- "What drew you to pursue a career in software development/your field?"
-
-Keep it conversational and welcoming. 2-3 lines maximum."""
-    ),
-    
-    "background": PromptTemplate(
-        input_variables=["conversation_history", "question_number", "candidate_profile"],
-        template="""You are conducting a technical interview. This is the background exploration stage (Question {question_number}/3).
-
-Conversation so far: {conversation_history}
-Candidate profile extracted: {candidate_profile}
-
-Based on their previous responses, ask a follow-up question about their educational background, early career experiences, or career transitions. Be specific and reference what they've mentioned. Examples:
-- "You mentioned studying [field]. How did that prepare you for your current role?"
-- "I see you transitioned from [previous role] to tech. What motivated that change?"
-
-2-3 lines maximum."""
-    ),
-    
-    "technical_experience": PromptTemplate(
-        input_variables=["conversation_history", "question_number", "candidate_profile"],
-        template="""You are conducting a technical interview. This is the technical experience deep dive (Question {question_number}/4).
-
-Conversation so far: {conversation_history}
-Candidate profile: {candidate_profile}
-
-Ask detailed questions about their technical skills, technologies they've worked with, or specific technical challenges they've faced. Reference their background. Examples:
-- "You mentioned working with [technology]. Can you describe a challenging problem you solved using it?"
-- "What's the most complex technical project you've worked on and what was your role?"
-- "How do you stay updated with new technologies in your field?"
-
-Be specific and technical. 2-3 lines maximum."""
-    ),
-    
-    "project_deep_dive": PromptTemplate(
-        input_variables=["conversation_history", "question_number", "candidate_profile"],
-        template="""You are conducting a technical interview. This is the project deep dive stage (Question {question_number}/3).
-
-Conversation so far: {conversation_history}
-Candidate profile: {candidate_profile}
-
-Focus on a specific project they've mentioned or ask them to choose their most significant project. Dig deep into:
-- Architecture and design decisions
-- Challenges faced and solutions implemented
-- Technologies used and why
-- Team collaboration and their specific contributions
-- Results and impact
-
-Reference specific projects or technologies they've mentioned. 2-3 lines maximum."""
-    ),
-    
-    "problem_solving": PromptTemplate(
-        input_variables=["conversation_history", "question_number", "candidate_profile"],
-        template="""You are conducting a technical interview. This is the problem-solving assessment (Question {question_number}/2).
-
-Conversation so far: {conversation_history}
-Candidate profile: {candidate_profile}
-
-Present a technical problem-solving scenario or ask about their approach to debugging/troubleshooting. Examples:
-- "Walk me through how you would debug a performance issue in [relevant technology]"
-- "Describe a time when you had to optimize code/system performance"
-- "How do you approach learning a new technology quickly?"
-
-Make it relevant to their experience level and background. 2-3 lines maximum."""
-    ),
-    
-    "behavioral": PromptTemplate(
-        input_variables=["conversation_history", "question_number", "candidate_profile"],
-        template="""You are conducting a technical interview. This is the behavioral assessment (Question {question_number}/2).
-
-Conversation so far: {conversation_history}
-Candidate profile: {candidate_profile}
-
-Ask behavioral questions about teamwork, leadership, conflict resolution, or growth mindset. Use STAR method prompting. Examples:
-- "Tell me about a time you had to work with a difficult team member"
-- "Describe a situation where you had to learn something completely new under tight deadlines"
-- "Give me an example of when you disagreed with a technical decision and how you handled it"
-
-2-3 lines maximum."""
-    ),
-    
-    "closing": PromptTemplate(
-        input_variables=["conversation_history", "candidate_profile"],
-        template="""You are conducting a technical interview. This is the closing stage.
-
-Conversation so far: {conversation_history}
-Candidate profile: {candidate_profile}
-
-Ask a thoughtful closing question that allows them to showcase anything important they haven't mentioned yet. Examples:
-- "Is there anything important about your experience or skills that we haven't covered?"
-- "What questions do you have about the role or our team?"
-- "What excites you most about this type of work?"
-
-Keep it open-ended and positive. 2-3 lines maximum."""
-    )
-}
-
-# Evaluation prompt
-EVALUATION_PROMPT = PromptTemplate(
-    input_variables=["conversation_history", "candidate_profile"],
-    template="""You are evaluating a candidate's performance in a structured technical interview.
-
-Complete conversation: {conversation_history}
-Candidate profile: {candidate_profile}
-
-Provide a comprehensive evaluation covering:
-
-1. **OVERALL PERFORMANCE SUMMARY**
-   Brief overview of the candidate's performance across all stages.
-
-2. **TECHNICAL COMPETENCY** (Score: X/15)
-   - Technical knowledge and skills demonstrated
-   - Problem-solving approach and methodology
-   - Understanding of technologies and concepts
-
-3. **COMMUNICATION SKILLS** (Score: X/10)
-   - Clarity and structure of responses
-   - Ability to explain technical concepts
-   - Professional communication style
-
-4. **EXPERIENCE & BACKGROUND** (Score: X/10)
-   - Relevance and depth of experience
-   - Career progression and growth
-   - Project contributions and impact
-
-5. **BEHAVIORAL COMPETENCIES** (Score: X/10)
-   - Teamwork and collaboration examples
-   - Problem-solving mindset
-   - Learning agility and adaptability
-
-6. **STRENGTHS**
-   Key areas where the candidate excelled
-
-7. **AREAS FOR IMPROVEMENT**
-   Specific areas that need development
-
-8. **FINAL RECOMMENDATION**
-   Clear recommendation with reasoning
-
-**TOTAL SCORE: [Sum]/45**
-
-Provide specific examples from their responses to support your evaluation."""
+# Prompts for concise questions (2-3 lines)
+intro_prompt = PromptTemplate(
+    input_variables=["history"],
+    template="""You are an AI interviewer. Based on the history: {history}, ask: 'Introduce yourself briefly, including your role in a recent project.' (1 question, 2 lines max)"""
 )
 
-# === LANGGRAPH NODES ===
-def analyze_response_node(state: InterviewState) -> InterviewState:
-    """Analyze the candidate's response and update their profile"""
-    try:
-        if not state["last_response"].strip():
-            state["follow_up_needed"] = True
-            return state
-            
-        response = state["last_response"].lower()
-        
-        # Extract information and update candidate profile
-        profile = state["candidate_profile"]
-        
-        # Extract technical skills
-        tech_keywords = ["python", "java", "javascript", "react", "node", "aws", "docker", "kubernetes", "sql", "mongodb"]
-        found_tech = [tech for tech in tech_keywords if tech in response]
-        if found_tech:
-            profile.setdefault("technologies", []).extend(found_tech)
-            profile["technologies"] = list(set(profile["technologies"]))  # Remove duplicates
-        
-        # Extract experience level
-        if any(word in response for word in ["senior", "lead", "architect", "manager"]):
-            profile["experience_level"] = "senior"
-        elif any(word in response for word in ["junior", "entry", "intern", "graduate"]):
-            profile["experience_level"] = "junior"
-        elif any(word in response for word in ["mid", "intermediate", "2 years", "3 years"]):
-            profile["experience_level"] = "mid"
-            
-        # Extract company/project information
-        if "worked at" in response or "company" in response:
-            profile["has_work_experience"] = True
-        if "project" in response or "built" in response or "developed" in response:
-            profile["has_projects"] = True
-            
-        # Assess response quality
-        word_count = len(state["last_response"].split())
-        if word_count < 10:
-            state["responses_quality"][state["current_stage"]] = "brief"
-            state["follow_up_needed"] = True
-        elif word_count < 30:
-            state["responses_quality"][state["current_stage"]] = "adequate"
-        else:
-            state["responses_quality"][state["current_stage"]] = "detailed"
-            
-        state["candidate_profile"] = profile
-        logger.info(f"Updated candidate profile: {profile}")
-        
-    except Exception as e:
-        logger.error(f"Error in analyze_response_node: {e}")
-        
-    return state
+project_prompt = PromptTemplate(
+    input_variables=["history", "question_number"],
+    template="""Based on the history: {history}, ask a concise question about the candidate's project (e.g., 'What was the purpose of your project?', 'What challenges did you face?'). This is project question {question_number} out of 2. Keep it 2-3 lines."""
+)
 
-def generate_question_node(state: InterviewState) -> InterviewState:
-    """Generate the next question based on current stage and context"""
-    try:
-        current_stage = state["current_stage"]
-        question_number = state["stage_progress"].get(current_stage, 0) + 1
+core_subject_prompt = PromptTemplate(
+    input_variables=["history", "question_number"],
+    template="""Based on the history: {history}, ask a concise question on Computer Organization, Operating Systems, or Data Structures (e.g., 'Explain cache memory in CO.', 'What is deadlock in OS?', 'How does a binary search tree work?'). This is core subject question {question_number} out of 3. Keep it 2-3 lines."""
+)
+
+# Enhanced evaluation prompt with explicit mark format requirement
+evaluation_prompt = PromptTemplate(
+    input_variables=["history"],
+    template="""Based on the interview history: {history}, 
+
+Evaluate the candidate's responses comprehensively. Provide:
+
+1. EVALUATION SUMMARY
+2. STRENGTHS: List specific strengths observed
+3. WEAKNESSES: List areas for improvement  
+4. FINAL MARK: Assign a numerical score out of 50 (e.g., "35 out of 50" or "42/50")
+5. JUSTIFICATION: Explain the reasoning behind the score
+
+IMPORTANT: The final mark MUST be clearly stated as "X out of 50" or "X/50" format where X is the numerical score.
+
+Format your response exactly as:
+EVALUATION SUMMARY
+[Brief summary here]
+
+STRENGTHS:
+[List strengths here]
+
+WEAKNESSES: 
+[List weaknesses here]
+
+FINAL MARK: [Score] out of 50
+
+JUSTIFICATION:
+[Detailed justification here]"""
+)
+
+def get_memory():
+    session_id = session.get('session_id', str(uuid4()))
+    session['session_id'] = session_id
+    if session_id not in memory_store:
+        memory_store[session_id] = ConversationBufferMemory()
+        logger.debug(f"Created new memory for session_id: {session_id}")
+    return memory_store[session_id]
+
+def extract_and_format_mark(evaluation_text):
+    """
+    Extract mark from evaluation text and ensure proper formatting
+    """
+    # Patterns to match various mark formats
+    patterns = [
+        r'FINAL MARK[:\s]*(\d+)\s*out of\s*50',  # "FINAL MARK: 45 out of 50"
+        r'FINAL MARK[:\s]*(\d+)/50',              # "FINAL MARK: 45/50"  
+        r'Final Mark[:\s]*(\d+)\s*out of\s*50',  # "Final Mark: 45 out of 50"
+        r'Final Mark[:\s]*(\d+)/50',              # "Final Mark: 45/50"
+        r'mark[:\s]*(\d+)\s*out of\s*50',        # "mark: 45 out of 50"
+        r'mark[:\s]*(\d+)/50',                    # "mark: 45/50"
+        r'score[:\s]*(\d+)\s*out of\s*50',       # "score: 45 out of 50"
+        r'score[:\s]*(\d+)/50',                   # "score: 45/50"
+        r'(\d+)\s*out of\s*50',                  # "45 out of 50"
+        r'(\d+)/50',                             # "45/50"
+    ]
+    
+    for pattern in patterns:
+        match = re.search(pattern, evaluation_text, re.IGNORECASE)
+        if match:
+            score = int(match.group(1))
+            # Ensure score is within valid range
+            if 0 <= score <= 50:
+                return score
+    
+    return None
+
+def analyze_performance_for_score(evaluation_text):
+    """
+    Analyze evaluation text to assign a reasonable default score
+    """
+    text_lower = evaluation_text.lower()
+    
+    # Positive indicators
+    positive_words = ['excellent', 'good', 'strong', 'clear', 'demonstrates', 'understanding', 'well']
+    negative_words = ['poor', 'weak', 'lacks', 'insufficient', 'unclear', 'limited', 'needs improvement']
+    
+    positive_count = sum(1 for word in positive_words if word in text_lower)
+    negative_count = sum(1 for word in negative_words if word in text_lower)
+    
+    # Basic scoring logic
+    if positive_count > negative_count * 2:
+        return 42  # Good performance
+    elif positive_count > negative_count:
+        return 35  # Average performance  
+    else:
+        return 28  # Below average performance
+
+def format_evaluation_with_mark(evaluation_text):
+    """
+    Ensure evaluation contains properly formatted mark
+    """
+    score = extract_and_format_mark(evaluation_text)
+    
+    if score is not None:
+        # Replace any existing mark format with standardized format
+        formatted_mark = f"FINAL MARK: {score} out of 50"
         
-        if current_stage in STAGE_PROMPTS:
-            prompt = STAGE_PROMPTS[current_stage]
-            
-            # Prepare conversation history as string
-            history_str = "\n".join([
-                f"Q: {entry['question']}\nA: {entry['response']}" 
-                for entry in state["conversation_history"]
-            ])
-            
-            # Generate question
-            if current_stage == "closing":
-                question = llm.invoke(prompt.format(
-                    conversation_history=history_str,
-                    candidate_profile=json.dumps(state["candidate_profile"], indent=2)
-                )).content
+        # Replace existing mark patterns
+        patterns_to_replace = [
+            r'FINAL MARK[:\s]*\d+[/\s]*(?:out of\s*)?50',
+            r'Final Mark[:\s]*\d+[/\s]*(?:out of\s*)?50',
+            r'mark[:\s]*\d+[/\s]*(?:out of\s*)?50',
+            r'score[:\s]*\d+[/\s]*(?:out of\s*)?50'
+        ]
+        
+        for pattern in patterns_to_replace:
+            evaluation_text = re.sub(pattern, formatted_mark, evaluation_text, flags=re.IGNORECASE)
+        
+        # If no existing pattern found, add the mark
+        if not re.search(r'FINAL MARK:', evaluation_text, re.IGNORECASE):
+            # Insert mark before justification if present
+            if 'JUSTIFICATION:' in evaluation_text.upper():
+                evaluation_text = evaluation_text.replace('JUSTIFICATION:', f'{formatted_mark}\n\nJUSTIFICATION:')
             else:
-                question = llm.invoke(prompt.format(
-                    conversation_history=history_str,
-                    question_number=question_number,
-                    candidate_profile=json.dumps(state["candidate_profile"], indent=2)
-                )).content
-            
-            # Clean the question
-            question = re.sub(r'\*\*|\*(?!\s*out\s*of)|\#|_', '', question).strip()
-            
-            state["current_question"] = question
-            logger.info(f"Generated {current_stage} question {question_number}: {question}")
-            
-    except Exception as e:
-        logger.error(f"Error generating question: {e}")
-        state["current_question"] = "Could you tell me more about your experience?"
-        
-    return state
+                evaluation_text += f'\n\n{formatted_mark}'
+    else:
+        # If no score found, add a default one based on content analysis
+        default_score = analyze_performance_for_score(evaluation_text)
+        formatted_mark = f"FINAL MARK: {default_score} out of 50"
+        evaluation_text += f'\n\n{formatted_mark}'
+    
+    return evaluation_text
 
-def check_stage_completion_node(state: InterviewState) -> InterviewState:
-    """Check if current stage is complete and determine next stage"""
+def clean_response(response):
+    """
+    Clean response while preserving important formatting like marks
+    """
+    # Remove markdown formatting but preserve structure
+    cleaned = re.sub(r'\*\*|\*(?!\s*out\s*of)|\#', '', response)
+    
+    # Preserve "out of" phrases which might contain marks
+    cleaned = re.sub(r'_(?!.*out.*of)', '', cleaned)
+    
+    return cleaned.strip()
+
+def _generate_evaluation_and_cleanup(memory):
+    """
+    Generate evaluation with guaranteed mark display
+    """
+    history = memory.buffer_as_str
+    if not history.strip():
+        return {"evaluation": "No answers provided. No evaluation possible.\n\nFINAL MARK: 0 out of 50", "status": "evaluation"}
+    
     try:
-        current_stage = state["current_stage"]
-        current_progress = state["stage_progress"].get(current_stage, 0)
-        max_questions = INTERVIEW_STAGES[current_stage]["max_questions"]
+        evaluation_chain = LLMChain(llm=llm, prompt=evaluation_prompt)
+        evaluation = evaluation_chain.run(history=history)
         
-        # Check if we need a follow-up or clarification
-        if state["follow_up_needed"] and state["clarification_count"] < 2:
-            state["follow_up_needed"] = False
-            state["clarification_count"] += 1
-            # Generate clarification question
-            state["current_question"] = f"Could you elaborate more on that? I'd like to understand your experience better."
-            return state
+        # Clean and format the evaluation
+        cleaned_evaluation = clean_response(evaluation)
+        formatted_evaluation = format_evaluation_with_mark(cleaned_evaluation)
         
-        # Reset clarification count when moving forward
-        state["clarification_count"] = 0
+        # Cleanup session data
+        session_id = session.get('session_id')
+        if session_id:
+            if session_id in memory_store:
+                del memory_store[session_id]
+                logger.info(f"Memory cleared for session {session_id}")
+            if session_id in exam_states:
+                del exam_states[session_id]
+                logger.info(f"Exam state cleared for session {session_id}")
+        session.clear()
         
-        # Update stage progress
-        state["stage_progress"][current_stage] = current_progress + 1
-        state["question_count"] += 1
-        
-        # Check if current stage is complete
-        if state["stage_progress"][current_stage] >= max_questions:
-            # Move to next stage
-            stages = list(INTERVIEW_STAGES.keys())
-            current_index = stages.index(current_stage)
-            
-            if current_index < len(stages) - 1:
-                next_stage = stages[current_index + 1]
-                state["current_stage"] = next_stage
-                logger.info(f"Moving from {current_stage} to {next_stage}")
-            else:
-                # Interview complete
-                state["interview_complete"] = True
-                state["evaluation_ready"] = True
-                logger.info("Interview completed, ready for evaluation")
-                
-    except Exception as e:
-        logger.error(f"Error in check_stage_completion_node: {e}")
-        
-    return state
-
-def generate_evaluation_node(state: InterviewState) -> InterviewState:
-    """Generate final evaluation of the interview"""
-    try:
-        # Prepare conversation history
-        history_str = "\n".join([
-            f"Stage: {entry.get('stage', 'Unknown')}\nQ: {entry['question']}\nA: {entry['response']}\n"
-            for entry in state["conversation_history"]
-        ])
-        
-        # Generate evaluation
-        evaluation = llm.invoke(EVALUATION_PROMPT.format(
-            conversation_history=history_str,
-            candidate_profile=json.dumps(state["candidate_profile"], indent=2)
-        )).content
-        
-        # Clean evaluation
-        evaluation = re.sub(r'\*\*|\*(?!\s*out\s*of)|\#|_', '', evaluation).strip()
-        
-        state["evaluation"] = evaluation
-        logger.info("Evaluation generated successfully")
+        logger.info("Evaluation generated successfully with mark")
+        return {"evaluation": formatted_evaluation, "status": "evaluation"}
         
     except Exception as e:
-        logger.error(f"Error generating evaluation: {e}")
-        state["evaluation"] = f"Error generating evaluation: {str(e)}"
-        
-    return state
+        logger.error(f"Error generating evaluation: {str(e)}")
+        return {"evaluation": f"Error generating evaluation: {str(e)}\n\nFINAL MARK: 0 out of 50", "status": "evaluation"}
 
-# Conditional functions for routing
-def should_continue_interview(state: InterviewState) -> str:
-    """Determine if interview should continue or end"""
-    if state["interview_complete"]:
-        return "generate_evaluation"
-    return "generate_question"
-
-def should_analyze_response(state: InterviewState) -> str:
-    """Determine if we should analyze response or generate evaluation"""
-    if state["evaluation_ready"]:
-        return "generate_evaluation"
-    return "analyze_response"
-
-# === BUILD LANGGRAPH ===
-def create_interview_graph():
-    """Create and configure the interview state graph"""
-    workflow = StateGraph(InterviewState)
-    
-    # Add nodes
-    workflow.add_node("analyze_response", analyze_response_node)
-    workflow.add_node("generate_question", generate_question_node)
-    workflow.add_node("check_stage_completion", check_stage_completion_node)
-    workflow.add_node("generate_evaluation", generate_evaluation_node)
-    
-    # Add edges
-    workflow.set_entry_point("generate_question")
-    workflow.add_edge("generate_question", END)
-    workflow.add_edge("analyze_response", "check_stage_completion")
-    workflow.add_conditional_edges(
-        "check_stage_completion",
-        should_continue_interview,
-        {
-            "generate_question": "generate_question",
-            "generate_evaluation": "generate_evaluation"
-        }
-    )
-    workflow.add_edge("generate_evaluation", END)
-    
-    # Compile graph
-    memory = MemorySaver()
-    return workflow.compile(checkpointer=memory)
-
-# Initialize the graph
-interview_graph = create_interview_graph()
-
-# Global state storage
-interview_states = {}
-
-def get_interview_state(session_id: str) -> InterviewState:
-    """Get or create interview state for session"""
-    if session_id not in interview_states:
-        interview_states[session_id] = InterviewState(
-            session_id=session_id,
-            current_stage="introduction",
-            question_count=0,
-            total_questions=sum(stage["max_questions"] for stage in INTERVIEW_STAGES.values()),
-            conversation_history=[],
-            candidate_profile={},
-            stage_progress={},
-            responses_quality={},
-            current_question="",
-            last_response="",
-            interview_complete=False,
-            evaluation_ready=False,
-            follow_up_needed=False,
-            clarification_count=0
-        )
-    return interview_states[session_id]
-
-# === PROCTORING SECTION (Unchanged) ===
+# === PROCTORING SECTION ===
 exam_states = {}
 ALERT_THRESHOLD_SECONDS, ALERT_COOLDOWN_SECONDS, LONG_BLINK_SECONDS, MAX_WARNINGS = 2.0, 5.0, 1.5, 3
 
@@ -528,7 +289,7 @@ def play_alert():
         except Exception as e:
             logger.error(f"Could not play alert sound: {e}")
     else:
-        print("\a")
+        print("\a")  # Fallback system beep
 
 def detect_gaze_direction(eye_frame):
     try:
@@ -621,174 +382,69 @@ def process_image(image_data):
     }
 
 # === API ROUTES ===
-@app.route('/api/start', methods=['GET'])
+@interview_bp.route('/api/start', methods=['GET'])
 def start_interview():
     try:
-        session_id = session.get('session_id', str(uuid4()))
-        session['session_id'] = session_id
-        
-        # Reset states
+        memory = get_memory()
+        session['question_count'] = 0
         reset_exam_state()
-        
-        # Get or create interview state
-        state = get_interview_state(session_id)
-        
-        # Generate first question using LangGraph
-        config = {"configurable": {"thread_id": session_id}}
-        result = interview_graph.invoke(state, config=config)
-        
-        # Update stored state
-        interview_states[session_id] = result
-        
-        logger.info(f"Interview started for session {session_id}")
-        return jsonify({
-            "question": result["current_question"],
-            "stage": result["current_stage"],
-            "question_number": result["question_count"] + 1,
-            "total_questions": result["total_questions"],
-            "progress": (result["question_count"] / result["total_questions"]) * 100
-        })
-        
+        history = memory.buffer_as_str
+        question = LLMChain(llm=llm, prompt=intro_prompt).run(history=history)
+        memory.save_context({"input": question}, {"output": ""})
+        logger.info("Interview started with intro question")
+        return jsonify({"question": clean_response(question), "status": "intro", "question_number": 1})
     except Exception as e:
         logger.error(f"Error in /api/start: {str(e)}", exc_info=True)
         return jsonify({"error": str(e)}), 500
 
-@app.route('/api/submit', methods=['POST'])
+@interview_bp.route('/api/submit', methods=['POST'])
 def submit_answer():
     try:
-        session_id = session.get('session_id')
-        if not session_id:
-            return jsonify({"error": "No active session"}), 400
-            
-        user_answer = request.json.get('answer', '').strip()
-        if not user_answer:
+        user_answer = request.json.get('answer', '')
+        if not user_answer.strip():
+            logger.warning("Empty answer received")
             return jsonify({"error": "Answer cannot be empty"}), 400
-            
-        # Get current interview state
-        state = interview_states.get(session_id)
-        if not state:
-            return jsonify({"error": "Interview session not found"}), 400
-            
-        # Add response to conversation history
-        state["conversation_history"].append({
-            "stage": state["current_stage"],
-            "question": state["current_question"],
-            "response": user_answer
-        })
-        state["last_response"] = user_answer
-        
-        # Process through LangGraph
-        config = {"configurable": {"thread_id": session_id}}
-        
-        # First analyze the response
-        state = interview_graph.get_graph().get_node("analyze_response").runnable.invoke(state)
-        
-        # Then check stage completion and potentially generate next question
-        state = interview_graph.get_graph().get_node("check_stage_completion").runnable.invoke(state)
-        
-        # Update stored state
-        interview_states[session_id] = state
-        
-        # Check if interview is complete
-        if state["interview_complete"]:
-            # Generate evaluation
-            state = interview_graph.get_graph().get_node("generate_evaluation").runnable.invoke(state)
-            interview_states[session_id] = state
-            
-            return jsonify({
-                "status": "evaluation",
-                "evaluation": state["evaluation"],
-                "candidate_profile": state["candidate_profile"]
-            })
+        memory = get_memory()
+        question_count = session.get('question_count', 0)
+        history = memory.buffer_as_str
+        last_question = history.split('Assistant:')[-2].split('Human:')[0].strip() if 'Assistant:' in history else ""
+        memory.save_context({"input": last_question}, {"output": user_answer})
+        question_count += 1
+        session['question_count'] = question_count
+        if question_count == 1:
+            prompt, status, args = project_prompt, "project", {"question_number": 1}
+        elif question_count == 2:
+            prompt, status, args = project_prompt, "project", {"question_number": 2}
+        elif question_count <= 5:
+            prompt, status, args = core_subject_prompt, "core", {"question_number": question_count - 2}
         else:
-            # Generate next question
-            state = interview_graph.get_graph().get_node("generate_question").runnable.invoke(state)
-            interview_states[session_id] = state
-            
-            return jsonify({
-                "question": state["current_question"],
-                "stage": state["current_stage"],
-                "question_number": state["question_count"] + 1,
-                "total_questions": state["total_questions"],
-                "progress": (state["question_count"] / state["total_questions"]) * 100,
-                "stage_info": f"{state['current_stage'].replace('_', ' ').title()} ({state['stage_progress'].get(state['current_stage'], 0) + 1}/{INTERVIEW_STAGES[state['current_stage']]['max_questions']})"
-            })
-            
+            logger.info("Generating final evaluation")
+            return jsonify(_generate_evaluation_and_cleanup(memory))
+        question = LLMChain(llm=llm, prompt=prompt).run(history=memory.buffer_as_str, **args)
+        memory.save_context({"input": question}, {"output": ""})
+        logger.debug(f"Generated question {question_count}: {question}")
+        return jsonify({"question": clean_response(question), "status": status, "question_number": question_count})
     except Exception as e:
         logger.error(f"Error in /api/submit: {str(e)}", exc_info=True)
         return jsonify({"error": str(e)}), 500
 
-@app.route('/api/finish', methods=['POST'])
+@interview_bp.route('/api/finish', methods=['POST'])
 def finish_interview():
     try:
-        session_id = session.get('session_id')
-        if not session_id:
-            return jsonify({"error": "No active session"}), 400
-            
-        # Get current interview state
-        state = interview_states.get(session_id)
-        if not state:
-            return jsonify({"error": "Interview session not found"}), 400
-            
-        # Save final answer if provided
-        user_answer = request.json.get('answer', '').strip()
-        if user_answer:
-            state["conversation_history"].append({
-                "stage": state["current_stage"],
-                "question": state["current_question"],
-                "response": user_answer
-            })
-            state["last_response"] = user_answer
-            
-        # Mark interview as complete and generate evaluation
-        state["interview_complete"] = True
-        state["evaluation_ready"] = True
-        
-        # Generate evaluation
-        state = interview_graph.get_graph().get_node("generate_evaluation").runnable.invoke(state)
-        interview_states[session_id] = state
-        
-        logger.info(f"Interview finished early for session {session_id}")
-        return jsonify({
-            "status": "evaluation",
-            "evaluation": state["evaluation"],
-            "candidate_profile": state["candidate_profile"]
-        })
-        
+        logger.info("User requested to finish interview early")
+        memory = get_memory()
+        user_answer = request.json.get('answer', '')
+        if user_answer.strip():
+            history = memory.buffer_as_str
+            last_question = history.split('Assistant:')[-2].split('Human:')[0].strip() if 'Assistant:' in history else ""
+            memory.save_context({"input": last_question}, {"output": user_answer})
+            logger.debug("Saved final answer before evaluation")
+        return jsonify(_generate_evaluation_and_cleanup(memory))
     except Exception as e:
         logger.error(f"Error in /api/finish: {str(e)}", exc_info=True)
         return jsonify({"error": str(e)}), 500
 
-@app.route('/api/interview-status', methods=['GET'])
-def get_interview_status():
-    """Get current interview status and progress"""
-    try:
-        session_id = session.get('session_id')
-        if not session_id:
-            return jsonify({"error": "No active session"}), 400
-            
-        state = interview_states.get(session_id)
-        if not state:
-            return jsonify({"error": "Interview session not found"}), 400
-            
-        return jsonify({
-            "session_id": session_id,
-            "current_stage": state["current_stage"],
-            "stage_display": state["current_stage"].replace('_', ' ').title(),
-            "question_count": state["question_count"],
-            "total_questions": state["total_questions"],
-            "progress_percentage": (state["question_count"] / state["total_questions"]) * 100,
-            "stage_progress": state["stage_progress"],
-            "candidate_profile": state["candidate_profile"],
-            "interview_complete": state["interview_complete"]
-        })
-        
-    except Exception as e:
-        logger.error(f"Error in /api/interview-status: {str(e)}")
-        return jsonify({"error": str(e)}), 500
-
-# Proctoring routes (unchanged)
-@app.route('/api/process-frame', methods=['POST'])
+@interview_bp.route('/api/process-frame', methods=['POST'])
 def process_frame():
     try:
         image_b64 = request.json['image']
@@ -800,17 +456,15 @@ def process_frame():
         logger.error(f"Error in /api/process-frame endpoint: {e}")
         return jsonify({"error": "Failed to process frame on server"}), 500
 
-@app.route('/api/end-exam', methods=['POST'])
+@interview_bp.route('/api/end-exam', methods=['POST'])
 def end_exam():
     try:
         session_id = session.get('session_id')
-        if session_id:
-            if session_id in exam_states:
-                logger.info(f"Proctoring summary: {exam_states[session_id]}")
-                del exam_states[session_id]
-            if session_id in interview_states:
-                logger.info(f"Interview summary: {interview_states[session_id]['candidate_profile']}")
-                del interview_states[session_id]
+        if session_id and session_id in exam_states:
+            logger.info(f"Proctoring summary: {exam_states[session_id]}")
+            del exam_states[session_id]
+        if session_id and session_id in memory_store:
+            del memory_store[session_id]
         session.clear()
         logger.info("Exam ended and session cleared")
         return jsonify({"status": "Exam ended"}), 200
@@ -818,23 +472,24 @@ def end_exam():
         logger.error(f"Error in /api/end-exam: {str(e)}")
         return jsonify({"error": str(e)}), 500
 
-@app.route('/api/health', methods=['GET'])
+@interview_bp.route('/api/health', methods=['GET'])
 def health_check():
+    """Health check endpoint"""
     return jsonify({
         "status": "healthy",
         "groq_connected": bool(GROQ_API_KEY),
         "opencv_loaded": bool(face_cascade and eye_cascade),
-        "active_sessions": len(interview_states),
-        "langgraph_initialized": bool(interview_graph)
+        "active_sessions": len(memory_store)
     }), 200
 
-@app.route('/api/reset-session', methods=['POST'])
+@interview_bp.route('/api/reset-session', methods=['POST'])
 def reset_session():
+    """Reset current session data"""
     try:
         session_id = session.get('session_id')
         if session_id:
-            if session_id in interview_states:
-                del interview_states[session_id]
+            if session_id in memory_store:
+                del memory_store[session_id]
             if session_id in exam_states:
                 del exam_states[session_id]
         session.clear()
@@ -844,80 +499,27 @@ def reset_session():
         logger.error(f"Error in /api/reset-session: {str(e)}")
         return jsonify({"error": str(e)}), 500
 
-@app.route('/api/get-stages', methods=['GET'])
-def get_interview_stages():
-    """Get information about interview stages"""
-    return jsonify({
-        "stages": {
-            stage: {
-                "name": stage.replace('_', ' ').title(),
-                "max_questions": info["max_questions"],
-                "description": get_stage_description(stage)
-            }
-            for stage, info in INTERVIEW_STAGES.items()
-        }
-    })
+# Test function to verify mark extraction (for debugging)
+def test_mark_extraction():
+    """
+    Test function to verify mark extraction works correctly
+    """
+    test_cases = [
+        "FINAL MARK: 45 out of 50",
+        "Final Mark: 38/50", 
+        "The candidate scored 42 out of 50",
+        "Overall mark 35/50",
+        "Evaluation shows good performance with a score of 40 out of 50",
+        "Strengths: Good knowledge\nWeaknesses: Some gaps\nJustification: Overall decent performance"  # No mark case
+    ]
+    
+    print("Testing mark extraction:")
+    for test in test_cases:
+        score = extract_and_format_mark(test)
+        formatted = format_evaluation_with_mark(test)
+        print(f"Original: '{test[:50]}...'")
+        print(f"Extracted Score: {score}")
+        print(f"Formatted: {formatted}")
+        print("-" * 50)
 
-def get_stage_description(stage: str) -> str:
-    """Get description for each interview stage"""
-    descriptions = {
-        "introduction": "Warm introduction and background overview",
-        "background": "Educational and career background exploration",
-        "technical_experience": "Deep dive into technical skills and experience",
-        "project_deep_dive": "Detailed discussion of significant projects",
-        "problem_solving": "Technical problem-solving and debugging scenarios",
-        "behavioral": "Behavioral questions about teamwork and challenges",
-        "closing": "Final thoughts and candidate questions"
-    }
-    return descriptions.get(stage, "Interview stage")
-
-# Debug routes for development
-@app.route('/api/debug/state', methods=['GET'])
-def debug_get_state():
-    """Debug endpoint to view current interview state"""
-    if not app.debug:
-        return jsonify({"error": "Debug mode not enabled"}), 403
-        
-    session_id = session.get('session_id')
-    if not session_id:
-        return jsonify({"error": "No active session"}), 400
-        
-    state = interview_states.get(session_id, {})
-    return jsonify({
-        "session_id": session_id,
-        "state": state,
-        "conversation_history": state.get("conversation_history", []),
-        "candidate_profile": state.get("candidate_profile", {})
-    })
-
-@app.route('/api/debug/graph', methods=['GET'])
-def debug_graph_info():
-    """Debug endpoint to view graph structure"""
-    if not app.debug:
-        return jsonify({"error": "Debug mode not enabled"}), 403
-        
-    try:
-        # Get graph information
-        graph_info = {
-            "nodes": list(interview_graph.get_graph().nodes.keys()),
-            "edges": [
-                {"from": edge[0], "to": edge[1]} 
-                for edge in interview_graph.get_graph().edges
-            ],
-            "entry_point": "generate_question"
-        }
-        return jsonify(graph_info)
-    except Exception as e:
-        return jsonify({"error": str(e)}), 500
-
-if __name__ == "__main__":
-    try:
-        logger.info("Flask server starting on port 8000...")
-        logger.info(f"Interview stages configured: {list(INTERVIEW_STAGES.keys())}")
-        logger.info(f"Total questions per interview: {sum(stage['max_questions'] for stage in INTERVIEW_STAGES.values())}")
-        app.run(debug=True, port=8000, use_reloader=False)
-    except KeyboardInterrupt:
-        logger.info("Server stopped by user")
-    except Exception as e:
-        logger.error(f"Server error: {e}")
-        sys.exit(1)
+# Note: This module is registered as a Blueprint by the main app

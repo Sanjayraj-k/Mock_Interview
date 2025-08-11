@@ -1,5 +1,4 @@
-from flask import Flask, request, jsonify
-from flask_cors import CORS
+from flask import Blueprint, request, jsonify
 import PyPDF2
 import io
 import chromadb
@@ -14,8 +13,8 @@ import logging
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-app = Flask(__name__)
-CORS(app)
+# Blueprint for AI Assistant (RAG)
+aiassistant_bp = Blueprint('aiassistant', __name__, url_prefix='')
 
 class RAGSystem:
     def __init__(self):
@@ -295,7 +294,7 @@ The interdisciplinary nature of machine learning draws from computer science, st
 # Initialize RAG system
 rag_system = RAGSystem()
 
-@app.route('/upload-pdf', methods=['POST'])
+@aiassistant_bp.route('/upload-pdf', methods=['POST'])
 def upload_pdf():
     """Upload and process PDF file"""
     try:
@@ -330,7 +329,7 @@ def upload_pdf():
         logger.error(f"Error processing PDF: {e}")
         return jsonify({'error': f'Error processing PDF: {str(e)}'}), 500
 
-@app.route('/query', methods=['POST'])
+@aiassistant_bp.route('/query', methods=['POST'])
 def query_documents():
     """Query the processed PDF documents"""
     try:
@@ -357,7 +356,7 @@ def query_documents():
         logger.error(f"Error processing query: {e}")
         return jsonify({'error': f'Error processing query: {str(e)}'}), 500
 
-@app.route('/health', methods=['GET'])
+@aiassistant_bp.route('/health', methods=['GET'])
 def health_check():
     """Health check endpoint"""
     collection_status = "ready" if rag_system.collection else "no document loaded"
@@ -367,7 +366,7 @@ def health_check():
         'collection_status': collection_status
     })
 
-@app.route('/clear', methods=['POST'])
+@aiassistant_bp.route('/clear', methods=['POST'])
 def clear_database():
     """Clear the current document database"""
     try:
@@ -383,7 +382,7 @@ def clear_database():
         logger.error(f"Error clearing database: {e}")
         return jsonify({'error': f'Error clearing database: {str(e)}'}), 500
 
-@app.route('/document-info', methods=['GET'])
+@aiassistant_bp.route('/document-info', methods=['GET'])
 def get_document_info():
     """Get information about the currently loaded document"""
     try:
@@ -403,18 +402,4 @@ def get_document_info():
         logger.error(f"Error getting document info: {e}")
         return jsonify({'error': f'Error getting document info: {str(e)}'}), 500
 
-if __name__ == '__main__':
-    # Create uploads directory if it doesn't exist
-    os.makedirs('uploads', exist_ok=True)
-    
-    print("=" * 60)
-    print("🚀 Starting Enhanced RAG PDF Assistant Backend...")
-    print("📄 Features:")
-    print("   • Comprehensive PDF text extraction")
-    print("   • Advanced vector similarity search")
-    print("   • Detailed, educational responses")
-    print("   • Page-by-page source organization")
-    print("   • Extended context understanding")
-    print("=" * 60)
-    
-    app.run(debug=True, host='0.0.0.0', port=5000)
+# Note: This module is registered as a Blueprint by the main app
