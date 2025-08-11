@@ -1,7 +1,12 @@
 from langgraph.graph import StateGraph, END
 from typing import TypedDict, Annotated
 import operator
-import pygraphviz as pgv
+try:
+    # Optional: only available in notebook/REPL environments
+    from IPython.display import Image, display
+except Exception:  # pragma: no cover - IPython may not be present
+    Image = None
+    display = None
 
 # Define the state schema and nodes (same as your context)
 class WorkflowState(TypedDict):
@@ -42,17 +47,12 @@ graph.add_edge("finish", END)
 graph.set_entry_point("start")
 app = graph.compile()
 
-# Get the graph and convert to pygraphviz
-langraph_graph = app.get_graph()
+# Render Mermaid PNG directly from LangGraph and optionally display
+png_bytes = app.get_graph().draw_mermaid_png()
+with open("langraph_workflow.png", "wb") as f:
+    f.write(png_bytes)
+print("LangGraph workflow saved as langraph_workflow.png (Mermaid PNG)")
 
-# Manually create a pygraphviz graph
-G = pgv.AGraph(directed=True)
-for node in langraph_graph.nodes:
-    G.add_node(node, shape="box")
-for edge in langraph_graph.edges:
-    G.add_edge(edge[0], edge[1])
-
-# Save the graph as PNG
-G.layout(prog="dot")
-G.draw("langraph_workflow.png")
-print("Langraph workflow saved as langraph_workflow.png")
+# If running in an environment that supports IPython display, show inline
+if Image is not None and display is not None:
+    display(Image(png_bytes))

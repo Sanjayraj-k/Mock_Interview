@@ -1,4 +1,4 @@
-from flask import Flask, request, jsonify
+from flask import Flask, request, jsonify, Response
 from flask_cors import CORS
 import os
 import uuid
@@ -393,6 +393,19 @@ def submit_answer(session_id):
     except Exception as e:
         logger.error(f"Error processing answer for session {session_id}: {e}")
         return jsonify({"error": "Failed to process answer", "details": str(e)}), 500
+
+@app.route('/interview/graph.png', methods=['GET'])
+def get_interview_graph_png():
+    """Return the interview workflow graph as a Mermaid-rendered PNG."""
+    try:
+        if not interview_system or not getattr(interview_system, 'app', None):
+            return jsonify({"error": "Interview system not initialized"}), 500
+
+        png_bytes = interview_system.app.get_graph().draw_mermaid_png()
+        return Response(png_bytes, mimetype='image/png')
+    except Exception as e:
+        logger.error(f"Error generating interview graph PNG: {e}")
+        return jsonify({"error": "Failed to generate graph", "details": str(e)}), 500
 
 @app.route('/interview/<session_id>/status', methods=['GET'])
 def get_interview_status(session_id):
