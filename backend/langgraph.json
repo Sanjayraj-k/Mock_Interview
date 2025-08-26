@@ -1,0 +1,6 @@
+{
+  "graphs": {
+    "quiz_workflow": "test1:create_quiz_graph"
+  },
+  "dependencies": ["test1.py"]
+}

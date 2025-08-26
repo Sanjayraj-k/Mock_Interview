@@ -19,7 +19,12 @@ import Uploadpage from './student/upload.jsx'; // Assuming this is the upload pa
 import Ats from './pages/ats.jsx';
 import StudentLandingpage from './Auth/StudentLandingpage.jsx'; // Assuming this is the landing page for students
 import QuestionBank from './pages/QuestionBank.jsx';
-import QuestionForum from './pages/QuestionForum.jsx'; // Assuming this is the question forum page
+import QuestionForum from './pages/QuestionForum.jsx';
+import CompanyLookup from './student/company.jsx';
+import Assistant from './pages/Assistant.jsx';
+
+// Assuming this is the company lookup page
+// Assuming this is the question forum page
 // Assuming this is the question bank page
 // Assuming this is the ATS page
 // Adjusted import for clarity
@@ -47,7 +52,7 @@ function App() {
           <Routes>
             {/* 1. Landing Page Route - Main entry point */}
             <Route path="/" element={<LandingPage />} />
-
+            
             {/* 2. HR Routes */}
             <Route path="/hr">
               <Route index element={<Navigate to="/hr/login" replace />} />
@@ -75,6 +80,8 @@ function App() {
               <Route path="ats" element={<Ats />} />
               <Route path="questionforum" element={<QuestionForum/>} />
               <Route path="upload" element={<Uploadpage />} />
+              <Route path="company" element={<CompanyLookup />} />
+              <Route path="assistant" element={<Assistant />} />
               
             </Route>
 

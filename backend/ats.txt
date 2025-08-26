@@ -75,43 +75,8 @@ def extract_resume_text(file):
     
     return text
 
-def extract_job_keywords(job_description):
-    """Extract unique keywords from job description using Groq LLM"""
-    prompt = f"""
-    Extract all key skills, technologies, tools, frameworks, languages, and requirements from the following job description.
-    Provide them as a list of unique keywords or short phrases (e.g., "Python", "Google Cloud Platform (GCP)", "ETL/ELT").
-    Avoid duplicates and general terms; focus on specific, matchable items.
-
-    JOB DESCRIPTION:
-    {job_description}
-
-    Respond only with valid JSON in this format:
-    {{"keywords": ["keyword1", "keyword2", ...]}}
-    """
-    try:
-        response = client.chat.completions.create(
-            model="meta-llama/llama-4-scout-17b-16e-instruct",  # Replace with a valid Groq model if needed, e.g., "llama-3.1-70b-versatile"
-            messages=[
-                {"role": "system", "content": "You are a precise keyword extractor. Respond only with the specified JSON format."},
-                {"role": "user", "content": prompt}
-            ],
-            temperature=0.1,
-            max_tokens=500
-        )
-        
-        response_text = response.choices[0].message.content
-        json_match = re.search(r'\{.*\}', response_text, re.DOTALL)
-        if json_match:
-            keywords = json.loads(json_match.group(0)).get('keywords', [])
-            return list(set(keywords))  # Ensure uniqueness
-        else:
-            return []
-    except Exception as e:
-        print(f"Error extracting keywords: {str(e)}")
-        return []
-
 def analyze_with_groq(resume_text, job_description):
-    """Analyze resume against job description using Groq LLM (without keyword_match)"""
+    """Analyze resume against job description using Groq LLM"""
     
     prompt = f"""
     You are an expert ATS (Applicant Tracking System) analyzer. Analyze the following resume against the job description and provide a comprehensive evaluation.
@@ -125,6 +90,11 @@ def analyze_with_groq(resume_text, job_description):
     Please provide your analysis in the following JSON format:
     {{
         "ats_score": <score out of 100>,
+        "keyword_match": {{
+            "matched_keywords": ["keyword1", "keyword2", ...],
+            "missing_keywords": ["missing1", "missing2", ...],
+            "match_percentage": <percentage>
+        }},
         "sections_analysis": {{
             "contact_info": {{"score": <0-10>, "feedback": "feedback text"}},
             "summary": {{"score": <0-10>, "feedback": "feedback text"}},
@@ -140,13 +110,14 @@ def analyze_with_groq(resume_text, job_description):
     }}
 
     Focus on:
-    1. Relevant experience alignment
-    2. Skills compatibility
-    3. Education requirements
-    4. Resume formatting and ATS-friendliness
-    5. Missing critical elements
-    6. Quantifiable achievements
-    7. Industry-specific terminology
+    1. Keyword matching between resume and job description
+    2. Relevant experience alignment
+    3. Skills compatibility
+    4. Education requirements
+    5. Resume formatting and ATS-friendliness
+    6. Missing critical elements
+    7. Quantifiable achievements
+    8. Industry-specific terminology
 
     Provide specific, actionable feedback that will help improve the ATS score.
     """
@@ -210,30 +181,8 @@ def analyze_resume():
         if resume_text.startswith("Error"):
             return jsonify({"error": resume_text}), 400
         
-        # Analyze with Groq (without keyword_match)
+        # Analyze with Groq
         analysis_result = analyze_with_groq(resume_text, job_description)
-        
-        # Deterministic keyword matching
-        job_keywords = extract_job_keywords(job_description)
-        matched = []
-        missing = []
-        lower_resume = resume_text.lower()
-        for kw in job_keywords:
-            # Use regex for whole-phrase matching (case-insensitive)
-            pattern = r'\b' + re.escape(kw.lower()) + r'\b'
-            if re.search(pattern, lower_resume):
-                matched.append(kw)
-            else:
-                missing.append(kw)
-        
-        match_percentage = (len(matched) / len(job_keywords) * 100) if job_keywords else 0
-        
-        # Insert keyword_match into result
-        analysis_result['keyword_match'] = {
-            "matched_keywords": matched,
-            "missing_keywords": missing,
-            "match_percentage": round(match_percentage, 1)
-        }
         
         # Add metadata
         analysis_result['metadata'] = {
