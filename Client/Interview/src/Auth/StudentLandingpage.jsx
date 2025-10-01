@@ -42,7 +42,40 @@ const StudentLandingPage = () => {
       icon: '🧠⚡',
       color: 'from-purple-400 to-pink-500',
       path: '/student/upload'
+    },
+    {
+      id: 'practicequiz',
+      title: 'Practice Quiz Generator',
+      description: 'Generate custom quizzes from PDFs, YouTube videos, or audio files using AI',
+      icon: '📚🤖',
+      color: 'from-emerald-400 to-cyan-500',
+      path: '/student/practicequiz'
+    },
+    {
+      id: 'Assistant',
+      title: 'AI Assistant',
+      description: 'Get personalized Answers for your Questions',
+      icon: '🤖💬',
+      color: 'from-yellow-400 to-amber-500',
+      path: '/student/Assistant'
+    },
+    {
+      id: 'Domainforum',
+      title: 'DomainForum',
+      description: ' Get Link with Your Domain members',
+      icon: '🤖💬',
+      color: 'from-yellow-400 to-amber-500',
+      path: '/student/domain'
+    },
+    {
+      id: 'companyscrap',
+      title: 'Company Research',
+      description: 'Research company profiles, vision, mission, and key information to prepare for interviews',
+      icon: '🏢🔍',
+      color: 'from-indigo-400 to-blue-500',
+      path: '/student/companyscrap'
     }
+
   ];
 
   return (

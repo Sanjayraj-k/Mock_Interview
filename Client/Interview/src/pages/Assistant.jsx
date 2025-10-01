@@ -1,5 +1,5 @@
-import React, { useState, useRef, useEffect } from 'react';
-import { Upload, Send, FileText, Bot, User, AlertCircle, CheckCircle, BookOpen, Workflow, Filter, Trash2 } from 'lucide-react';
+import React, { useState, useRef } from 'react';
+import { Upload, Send, FileText, Bot, User, AlertCircle, CheckCircle, BookOpen, Workflow, Filter } from 'lucide-react';
 
 const EnhancedAssistant = () => {
   const [messages, setMessages] = useState([]);
@@ -12,35 +12,25 @@ const EnhancedAssistant = () => {
   const messagesEndRef = useRef(null);
 
   // API Configuration
-  const API_BASE = 'http://localhost:3000';
+  const API_BASE = 'http://localhost:5000';
 
-  // Auto-scroll to bottom of messages
   const scrollToBottom = () => {
-    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+    messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
   };
 
-  useEffect(scrollToBottom, [messages]);
+  React.useEffect(scrollToBottom, [messages]);
 
-  // Handle PDF file upload
   const handleFileUpload = async (event) => {
     const file = event.target.files[0];
-    if (!file) {
-      setUploadStatus('No file selected');
-      return;
-    }
-    if (file.type !== 'application/pdf') {
+    if (!file || file.type !== 'application/pdf') {
       setUploadStatus('Please select a valid PDF file');
-      return;
-    }
-    if (file.size > 10 * 1024 * 1024) {
-      setUploadStatus('PDF file too large. Maximum size is 10MB.');
       return;
     }
 
     setUploadedFile(file);
     setUploadStatus('Processing through LangGraph workflow...');
     setIsProcessing(true);
-
+    
     try {
       const formData = new FormData();
       formData.append('pdf', file);
@@ -50,30 +40,26 @@ const EnhancedAssistant = () => {
         body: formData,
       });
 
-      if (!response.ok) {
-        const errorData = await response.json();
-        throw new Error(errorData.error || 'Upload failed');
-      }
-
-      const data = await response.json();
-      setUploadStatus(`✅ PDF processed successfully! Created ${data.document_count} filtered chunks through enhanced workflow.`);
-      setMessages([
-        {
+      if (response.ok) {
+        const data = await response.json();
+        setUploadStatus(`✅ PDF processed successfully! Created ${data.document_count} filtered chunks through enhanced workflow.`);
+        setMessages([{
           type: 'system',
           content: `PDF "${file.name}" has been processed through the LangGraph workflow with advanced text filtering. The system extracted and filtered ${data.document_count} semantic chunks. You can now ask focused questions to get 3-4 key points per page with highlighted key terms.`,
           timestamp: new Date().toLocaleTimeString(),
-          workflowSteps: ['Text Extraction', 'Content Filtering', 'Semantic Chunking', 'Embedding Generation', 'Vector Storage'],
-        },
-      ]);
+          workflowSteps: ['Text Extraction', 'Content Filtering', 'Semantic Chunking', 'Embedding Generation', 'Vector Storage']
+        }]);
+      } else {
+        throw new Error('Upload failed');
+      }
     } catch (error) {
-      setUploadStatus(`❌ Error processing PDF: ${error.message}. Please try again.`);
+      setUploadStatus('❌ Error processing PDF. Please try again.');
       console.error('Upload error:', error);
     } finally {
       setIsProcessing(false);
     }
   };
 
-  // Handle question submission
   const handleQuestionSubmit = async (e) => {
     e.preventDefault();
     if (!currentQuestion.trim() || isLoading) return;
@@ -81,10 +67,10 @@ const EnhancedAssistant = () => {
     const userMessage = {
       type: 'user',
       content: currentQuestion,
-      timestamp: new Date().toLocaleTimeString(),
+      timestamp: new Date().toLocaleTimeString()
     };
 
-    setMessages((prev) => [...prev, userMessage]);
+    setMessages(prev => [...prev, userMessage]);
     setCurrentQuestion('');
     setIsLoading(true);
 
@@ -94,15 +80,14 @@ const EnhancedAssistant = () => {
         headers: {
           'Content-Type': 'application/json',
         },
-        body: JSON.stringify({ question: currentQuestion }),
+        body: JSON.stringify({
+          question: currentQuestion,
+          use_context: uploadedFile !== null
+        }),
       });
 
-      if (!response.ok) {
-        const errorData = await response.json();
-        throw new Error(errorData.error || 'Query failed');
-      }
-
       const data = await response.json();
+      
       const assistantMessage = {
         type: 'assistant',
         content: data.answer,
@@ -110,50 +95,24 @@ const EnhancedAssistant = () => {
         pagePoints: data.page_points || {},
         pagesReferenced: data.pages_referenced || [],
         totalSources: data.total_sources || 0,
-        timestamp: new Date().toLocaleTimeString(),
+        timestamp: new Date().toLocaleTimeString()
       };
 
-      setMessages((prev) => [...prev, assistantMessage]);
+      setMessages(prev => [...prev, assistantMessage]);
     } catch (error) {
       const errorMessage = {
         type: 'assistant',
-        content: `Sorry, I encountered an error: ${error.message}. Please try again.`,
+        content: 'Sorry, I encountered an error while processing your question through the LangGraph workflow. Please try again.',
         hasContext: false,
-        timestamp: new Date().toLocaleTimeString(),
+        timestamp: new Date().toLocaleTimeString()
       };
-      setMessages((prev) => [...prev, errorMessage]);
+      setMessages(prev => [...prev, errorMessage]);
       console.error('Query error:', error);
     } finally {
       setIsLoading(false);
     }
   };
 
-  // Handle clear database
-  const handleClearDatabase = async () => {
-    try {
-      const response = await fetch(`${API_BASE}/clear`, {
-        method: 'POST',
-      });
-
-      if (!response.ok) {
-        const errorData = await response.json();
-        throw new Error(errorData.error || 'Failed to clear database');
-      }
-
-      const data = await response.json();
-      setUploadStatus(data.message);
-      setUploadedFile(null);
-      setMessages([]);
-      if (fileInputRef.current) {
-        fileInputRef.current.value = '';
-      }
-    } catch (error) {
-      setUploadStatus(`❌ Error clearing database: ${error.message}`);
-      console.error('Clear database error:', error);
-    }
-  };
-
-  // Handle Enter key press
   const handleKeyPress = (e) => {
     if (e.key === 'Enter' && !e.shiftKey) {
       e.preventDefault();
@@ -161,13 +120,13 @@ const EnhancedAssistant = () => {
     }
   };
 
-  // Format structured response for assistant messages
   const formatStructuredResponse = (content) => {
     const lines = content.split('\n');
     const elements = [];
-
+    
     lines.forEach((line, index) => {
       if (line.startsWith('**Page ') && line.endsWith('**')) {
+        // Extract page number and format as header
         const pageMatch = line.match(/\*\*Page (\d+)\*\*/);
         if (pageMatch) {
           elements.push(
@@ -180,7 +139,12 @@ const EnhancedAssistant = () => {
           );
         }
       } else if (line.startsWith('• ')) {
-        let content = line.substring(2).replace(/\*\*(.*?)\*\*/g, '$1');
+        // Process bullet points and remove **bold** formatting
+        let content = line.substring(2);
+        
+        // Remove **bold** markers and just display the plain text
+        content = content.replace(/\*\*(.*?)\*\*/g, '$1');
+        
         elements.push(
           <div key={`bullet-${index}`} className="flex items-start mb-3 ml-6">
             <div className="w-3 h-3 bg-green-500 rounded-full mt-2 mr-4 flex-shrink-0 shadow-sm"></div>
@@ -188,6 +152,7 @@ const EnhancedAssistant = () => {
           </div>
         );
       } else if (line.trim()) {
+        // Regular text lines
         elements.push(
           <p key={`text-${index}`} className="text-gray-700 mb-2 text-sm">
             {line}
@@ -195,22 +160,21 @@ const EnhancedAssistant = () => {
         );
       }
     });
-
+    
     return elements;
   };
 
-  // Message bubble component
   const MessageBubble = ({ message }) => {
     const isUser = message.type === 'user';
     const isSystem = message.type === 'system';
 
     return (
-      <div className={`flex ${isUser ? 'justify-end' : 'justify-start'} mb-6`} role="region" aria-label={isUser ? 'User message' : isSystem ? 'System message' : 'Assistant message'}>
+      <div className={`flex ${isUser ? 'justify-end' : 'justify-start'} mb-6`}>
         <div className={`flex max-w-5xl w-full ${isUser ? 'flex-row-reverse' : 'flex-row'}`}>
           <div className={`flex-shrink-0 ${isUser ? 'ml-3' : 'mr-3'}`}>
             <div className={`w-10 h-10 rounded-full flex items-center justify-center ${
               isUser ? 'bg-blue-500' : isSystem ? 'bg-purple-500' : 'bg-green-500'
-            } shadow-md`} aria-hidden="true">
+            } shadow-md`}>
               {isUser ? <User size={18} className="text-white" /> : 
                isSystem ? <Workflow size={18} className="text-white" /> :
                <Bot size={18} className="text-white" />}
@@ -226,6 +190,7 @@ const EnhancedAssistant = () => {
                 {isUser ? 'You' : isSystem ? 'LangGraph Workflow' : 'Enhanced Assistant'}
                 <span className="ml-2 text-xs opacity-70 font-normal">{message.timestamp}</span>
               </span>
+              
               {message.type === 'assistant' && message.totalSources > 0 && (
                 <div className="flex items-center space-x-2">
                   <span className="text-xs bg-green-100 text-green-700 px-2 py-1 rounded-full font-medium">
@@ -237,6 +202,8 @@ const EnhancedAssistant = () => {
                 </div>
               )}
             </div>
+            
+            {/* Workflow steps for system messages */}
             {message.workflowSteps && (
               <div className="mb-4 p-3 bg-white rounded-lg border border-purple-200">
                 <h4 className="text-sm font-semibold text-purple-800 mb-2 flex items-center">
@@ -252,17 +219,25 @@ const EnhancedAssistant = () => {
                 </div>
               </div>
             )}
+            
+            {/* Enhanced content rendering */}
             {message.type === 'assistant' && message.content.includes('**Page ') ? (
-              <div className="text-sm">{formatStructuredResponse(message.content)}</div>
+              <div className="text-sm">
+                {formatStructuredResponse(message.content)}
+              </div>
             ) : (
               <div className="text-sm whitespace-pre-wrap leading-relaxed">{message.content}</div>
             )}
+            
+            {/* Context warning */}
             {message.type === 'assistant' && !message.hasContext && !isSystem && (
               <div className="mt-4 p-3 bg-yellow-50 border-l-4 border-yellow-400 text-xs text-yellow-800">
                 <AlertCircle size={14} className="inline mr-2" />
                 No relevant content found in your document for this query. Response based on general knowledge.
               </div>
             )}
+            
+            {/* Page reference footer */}
             {message.pagesReferenced && message.pagesReferenced.length > 0 && (
               <div className="mt-4 pt-3 border-t border-gray-200">
                 <div className="text-xs text-gray-600 font-medium flex items-center">
@@ -286,7 +261,7 @@ const EnhancedAssistant = () => {
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-gray-50 to-blue-50 flex flex-col">
-      {/* Header */}
+      {/* Enhanced Header */}
       <header className="bg-white shadow-lg border-b-2 border-blue-100">
         <div className="max-w-7xl mx-auto px-6 py-5">
           <h1 className="text-3xl font-bold bg-gradient-to-r from-blue-600 to-green-600 bg-clip-text text-transparent flex items-center">
@@ -302,12 +277,13 @@ const EnhancedAssistant = () => {
 
       {/* Main Content */}
       <div className="flex-1 max-w-7xl mx-auto w-full px-6 py-8">
-        {/* Upload Section */}
+        {/* Enhanced Upload Section */}
         <div className="bg-white rounded-xl shadow-lg border-2 border-blue-100 p-6 mb-8">
           <h2 className="text-xl font-bold mb-4 flex items-center text-gray-800">
             <FileText className="mr-2 text-blue-500" />
             PDF Processing Pipeline
           </h2>
+          
           <div className="flex items-center space-x-4 mb-4">
             <input
               type="file"
@@ -315,46 +291,36 @@ const EnhancedAssistant = () => {
               onChange={handleFileUpload}
               ref={fileInputRef}
               className="hidden"
-              aria-label="Upload PDF file"
             />
+            
             <button
               onClick={() => fileInputRef.current?.click()}
               disabled={isProcessing}
               className="flex items-center px-6 py-3 bg-gradient-to-r from-blue-500 to-blue-600 text-white rounded-lg hover:from-blue-600 hover:to-blue-700 transition-all duration-200 shadow-md disabled:opacity-50 disabled:cursor-not-allowed"
-              aria-label="Upload PDF"
             >
               <Upload size={18} className="mr-2" />
               {isProcessing ? 'Processing...' : 'Upload PDF'}
             </button>
+            
             {uploadedFile && (
-              <div className="flex items-center space-x-4">
-                <div className="flex items-center text-sm text-gray-700 bg-green-50 px-3 py-2 rounded-lg border border-green-200">
-                  <CheckCircle size={16} className="mr-2 text-green-500" />
-                  {uploadedFile.name}
-                </div>
-                <button
-                  onClick={handleClearDatabase}
-                  className="flex items-center px-4 py-2 bg-red-500 text-white rounded-lg hover:bg-red-600 transition-all duration-200 shadow-md"
-                  aria-label="Clear uploaded PDF and database"
-                >
-                  <Trash2 size={16} className="mr-2" />
-                  Clear
-                </button>
+              <div className="flex items-center text-sm text-gray-700 bg-green-50 px-3 py-2 rounded-lg border border-green-200">
+                <CheckCircle size={16} className="mr-2 text-green-500" />
+                {uploadedFile.name}
               </div>
             )}
           </div>
+          
           {uploadStatus && (
-            <div
-              className={`p-3 rounded-lg text-sm ${
-                uploadStatus.includes('successfully') ? 'bg-green-50 text-green-700 border border-green-200' :
-                uploadStatus.includes('Error') ? 'bg-red-50 text-red-700 border border-red-200' :
-                'bg-blue-50 text-blue-700 border border-blue-200'
-              }`}
-              role="alert"
-            >
+            <div className={`p-3 rounded-lg text-sm ${
+              uploadStatus.includes('successfully') ? 'bg-green-50 text-green-700 border border-green-200' : 
+              uploadStatus.includes('Error') ? 'bg-red-50 text-red-700 border border-red-200' : 
+              'bg-blue-50 text-blue-700 border border-blue-200'
+            }`}>
               {uploadStatus}
             </div>
           )}
+
+          {/* Processing indicator */}
           {isProcessing && (
             <div className="mt-4 p-4 bg-blue-50 rounded-lg border border-blue-200">
               <div className="flex items-center mb-3">
@@ -373,14 +339,18 @@ const EnhancedAssistant = () => {
           )}
         </div>
 
+        {/* Enhanced Features Section */}
+        
+
         {/* Chat Section */}
-        <div className="bg-white rounded-xl shadow-lg border-2 border-gray-100 flex flex-col" style={{ height: '600px' }}>
-          <div className="flex-1 overflow-y-auto p-6" role="log" aria-live="polite">
+        <div className="bg-white rounded-xl shadow-lg border-2 border-gray-100 flex flex-col" style={{height: '600px'}}>
+          {/* Messages */}
+          <div className="flex-1 overflow-y-auto p-6">
             {messages.length === 0 ? (
               <div className="text-center text-gray-500 py-12">
                 <Bot size={64} className="mx-auto mb-6 text-gray-300" />
-                <p className="text-sm">Upload a PDF to start querying with the Enhanced Assistant.</p>
-              </div>
+
+                </div>
             ) : (
               <>
                 {messages.map((message, index) => (
@@ -400,8 +370,8 @@ const EnhancedAssistant = () => {
                         </div>
                         <div className="flex space-x-2">
                           <div className="w-3 h-3 bg-green-400 rounded-full animate-bounce"></div>
-                          <div className="w-3 h-3 bg-blue-400 rounded-full animate-bounce" style={{ animationDelay: '0.1s' }}></div>
-                          <div className="w-3 h-3 bg-purple-400 rounded-full animate-bounce" style={{ animationDelay: '0.2s' }}></div>
+                          <div className="w-3 h-3 bg-blue-400 rounded-full animate-bounce" style={{animationDelay: '0.1s'}}></div>
+                          <div className="w-3 h-3 bg-purple-400 rounded-full animate-bounce" style={{animationDelay: '0.2s'}}></div>
                         </div>
                       </div>
                     </div>
@@ -411,6 +381,8 @@ const EnhancedAssistant = () => {
               </>
             )}
           </div>
+
+          {/* Enhanced Input Section */}
           <div className="border-t-2 border-gray-100 p-6 bg-gradient-to-r from-gray-50 to-blue-50">
             <div className="flex space-x-3 mb-3">
               <input
@@ -420,14 +392,12 @@ const EnhancedAssistant = () => {
                 onKeyPress={handleKeyPress}
                 placeholder={uploadedFile ? "Ask specific questions for focused, structured answers..." : "Upload a PDF first to enable intelligent querying"}
                 className="flex-1 px-4 py-3 border-2 border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent bg-white shadow-sm transition-all duration-200"
-                disabled={isLoading || !uploadedFile}
-                aria-label="Question input"
+                disabled={isLoading}
               />
               <button
                 onClick={handleQuestionSubmit}
-                disabled={isLoading || !currentQuestion.trim() || !uploadedFile}
+                disabled={isLoading || !currentQuestion.trim()}
                 className="px-6 py-3 bg-gradient-to-r from-green-500 to-green-600 text-white rounded-xl hover:from-green-600 hover:to-green-700 disabled:from-gray-300 disabled:to-gray-400 disabled:cursor-not-allowed transition-all duration-200 flex items-center shadow-md"
-                aria-label="Submit question"
               >
                 <Send size={16} className="mr-2" />
                 Ask
@@ -440,6 +410,7 @@ const EnhancedAssistant = () => {
           </div>
         </div>
       </div>
+
     </div>
   );
 };

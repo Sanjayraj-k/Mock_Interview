@@ -43,7 +43,7 @@ if not GROQ_API_KEY:
 
 # Initialize Groq LLM
 try:
-    llm = ChatGroq(model_name="llama3-70b-8192", groq_api_key=GROQ_API_KEY, temperature=0.7, max_tokens=200)
+    llm = ChatGroq(model_name="openai/gpt-oss-120b", groq_api_key=GROQ_API_KEY, temperature=0.7, max_tokens=200)
     logger.info("Groq LLM initialized successfully")
 except Exception as e:
     logger.error(f"Error initializing Groq LLM: {str(e)}", exc_info=True)

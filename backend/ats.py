@@ -1,5 +1,4 @@
-from flask import Flask, request, jsonify
-from flask_cors import CORS
+from flask import Blueprint, request, jsonify
 import os
 from groq import Groq
 import PyPDF2
@@ -9,11 +8,16 @@ import re
 from werkzeug.utils import secure_filename
 import tempfile
 
-app = Flask(__name__)
-CORS(app)
+# Blueprint for ATS
+ats_bp = Blueprint('ats', __name__, url_prefix='/ats')
 
 # Configure Groq client
-client = Groq(api_key=os.getenv('GROQ_API_KEY'))
+groq_api_key = os.getenv('GROQ_API_KEY')
+if groq_api_key:
+    client = Groq(api_key=groq_api_key)
+else:
+    client = None
+    print("Warning: GROQ_API_KEY not set. ATS analysis will be limited.")
 
 # Allowed file extensions
 ALLOWED_EXTENSIONS = {'pdf', 'doc', 'docx', 'txt'}
@@ -75,43 +79,32 @@ def extract_resume_text(file):
     
     return text
 
-def extract_job_keywords(job_description):
-    """Extract unique keywords from job description using Groq LLM"""
-    prompt = f"""
-    Extract all key skills, technologies, tools, frameworks, languages, and requirements from the following job description.
-    Provide them as a list of unique keywords or short phrases (e.g., "Python", "Google Cloud Platform (GCP)", "ETL/ELT").
-    Avoid duplicates and general terms; focus on specific, matchable items.
-
-    JOB DESCRIPTION:
-    {job_description}
-
-    Respond only with valid JSON in this format:
-    {{"keywords": ["keyword1", "keyword2", ...]}}
-    """
-    try:
-        response = client.chat.completions.create(
-            model="meta-llama/llama-4-scout-17b-16e-instruct",  # Replace with a valid Groq model if needed, e.g., "llama-3.1-70b-versatile"
-            messages=[
-                {"role": "system", "content": "You are a precise keyword extractor. Respond only with the specified JSON format."},
-                {"role": "user", "content": prompt}
-            ],
-            temperature=0.1,
-            max_tokens=500
-        )
-        
-        response_text = response.choices[0].message.content
-        json_match = re.search(r'\{.*\}', response_text, re.DOTALL)
-        if json_match:
-            keywords = json.loads(json_match.group(0)).get('keywords', [])
-            return list(set(keywords))  # Ensure uniqueness
-        else:
-            return []
-    except Exception as e:
-        print(f"Error extracting keywords: {str(e)}")
-        return []
-
 def analyze_with_groq(resume_text, job_description):
-    """Analyze resume against job description using Groq LLM (without keyword_match)"""
+    """Analyze resume against job description using Groq LLM"""
+    
+    # Check if Groq client is available
+    if client is None:
+        return {
+            "error": "Groq API key not configured. Please set GROQ_API_KEY environment variable.",
+            "ats_score": 0,
+            "keyword_match": {
+                "matched_keywords": [],
+                "missing_keywords": [],
+                "match_percentage": 0
+            },
+            "sections_analysis": {
+                "contact_info": {"score": 0, "feedback": "API not configured"},
+                "summary": {"score": 0, "feedback": "API not configured"},
+                "experience": {"score": 0, "feedback": "API not configured"},
+                "skills": {"score": 0, "feedback": "API not configured"},
+                "education": {"score": 0, "feedback": "API not configured"},
+                "formatting": {"score": 0, "feedback": "API not configured"}
+            },
+            "strengths": [],
+            "weaknesses": ["Groq API not configured"],
+            "recommendations": ["Please configure GROQ_API_KEY environment variable"],
+            "overall_feedback": "Groq API key not configured. Please set GROQ_API_KEY environment variable to enable ATS analysis."
+        }
     
     prompt = f"""
     You are an expert ATS (Applicant Tracking System) analyzer. Analyze the following resume against the job description and provide a comprehensive evaluation.
@@ -125,6 +118,11 @@ def analyze_with_groq(resume_text, job_description):
     Please provide your analysis in the following JSON format:
     {{
         "ats_score": <score out of 100>,
+        "keyword_match": {{
+            "matched_keywords": ["keyword1", "keyword2", ...],
+            "missing_keywords": ["missing1", "missing2", ...],
+            "match_percentage": <percentage>
+        }},
         "sections_analysis": {{
             "contact_info": {{"score": <0-10>, "feedback": "feedback text"}},
             "summary": {{"score": <0-10>, "feedback": "feedback text"}},
@@ -140,13 +138,14 @@ def analyze_with_groq(resume_text, job_description):
     }}
 
     Focus on:
-    1. Relevant experience alignment
-    2. Skills compatibility
-    3. Education requirements
-    4. Resume formatting and ATS-friendliness
-    5. Missing critical elements
-    6. Quantifiable achievements
-    7. Industry-specific terminology
+    1. Keyword matching between resume and job description
+    2. Relevant experience alignment
+    3. Skills compatibility
+    4. Education requirements
+    5. Resume formatting and ATS-friendliness
+    6. Missing critical elements
+    7. Quantifiable achievements
+    8. Industry-specific terminology
 
     Provide specific, actionable feedback that will help improve the ATS score.
     """
@@ -183,7 +182,7 @@ def analyze_with_groq(resume_text, job_description):
             "ats_score": 0
         }
 
-@app.route('/analyze-resume', methods=['POST'])
+@ats_bp.route('/analyze-resume', methods=['POST'])
 def analyze_resume():
     """Main endpoint to analyze resume against job description"""
     
@@ -210,30 +209,8 @@ def analyze_resume():
         if resume_text.startswith("Error"):
             return jsonify({"error": resume_text}), 400
         
-        # Analyze with Groq (without keyword_match)
+        # Analyze with Groq
         analysis_result = analyze_with_groq(resume_text, job_description)
-        
-        # Deterministic keyword matching
-        job_keywords = extract_job_keywords(job_description)
-        matched = []
-        missing = []
-        lower_resume = resume_text.lower()
-        for kw in job_keywords:
-            # Use regex for whole-phrase matching (case-insensitive)
-            pattern = r'\b' + re.escape(kw.lower()) + r'\b'
-            if re.search(pattern, lower_resume):
-                matched.append(kw)
-            else:
-                missing.append(kw)
-        
-        match_percentage = (len(matched) / len(job_keywords) * 100) if job_keywords else 0
-        
-        # Insert keyword_match into result
-        analysis_result['keyword_match'] = {
-            "matched_keywords": matched,
-            "missing_keywords": missing,
-            "match_percentage": round(match_percentage, 1)
-        }
         
         # Add metadata
         analysis_result['metadata'] = {
@@ -248,12 +225,12 @@ def analyze_resume():
     except Exception as e:
         return jsonify({"error": f"Server error: {str(e)}"}), 500
 
-@app.route('/health', methods=['GET'])
+@ats_bp.route('/health', methods=['GET'])
 def health_check():
     """Health check endpoint"""
     return jsonify({"status": "healthy", "service": "ATS Resume Scorer"})
 
-@app.route('/test-groq', methods=['GET'])
+@ats_bp.route('/test-groq', methods=['GET'])
 def test_groq():
     """Test Groq API connection"""
     try:
@@ -273,9 +250,4 @@ def test_groq():
             "message": f"Groq API error: {str(e)}"
         }), 500
 
-if __name__ == '__main__':
-    # Check if GROQ_API_KEY is set
-    if not os.getenv('GROQ_API_KEY'):
-        print("Warning: GROQ_API_KEY environment variable not set!")
-    
-    app.run(debug=True, host='0.0.0.0', port=5000)
+# Note: This module is registered as a Blueprint by the main app

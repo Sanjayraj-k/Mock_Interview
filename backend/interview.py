@@ -1,516 +1,525 @@
-from flask import Flask, request, jsonify
-from flask_cors import CORS
 import os
-import uuid
-import json
-from datetime import datetime
-from typing import Dict, List, Any, TypedDict
+import logging
+import sys
+import time
+import re
+from uuid import uuid4
+import base64
+import numpy as np
+import cv2
+from flask import Blueprint, request, jsonify, session
 from langchain_groq import ChatGroq
 from langchain.prompts import PromptTemplate
-from langchain.schema import HumanMessage, SystemMessage
-from langgraph.graph import StateGraph, END
-import logging
+from langchain.chains import LLMChain
+from langchain.memory import ConversationBufferMemory
+from dotenv import load_dotenv
+
+# Windows-specific audio (optional)
+try:
+    import winsound
+    WINSOUND_AVAILABLE = True
+except ImportError:
+    WINSOUND_AVAILABLE = False
+    logging.warning("winsound not available (non-Windows system).")
 
 # Configure logging
-logging.basicConfig(level=logging.INFO)
+logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 logger = logging.getLogger(__name__)
 
-app = Flask(__name__)
-CORS(app)  # Enable CORS for all routes
+# Blueprint for Interview & Proctoring
+interview_bp = Blueprint('interview', __name__, url_prefix='/interview')
 
-# In-memory storage for interview sessions (use Redis/Database in production)
-interview_sessions = {}
+logger.info("Starting combined proctoring and interview Flask server...")
 
-class InterviewState(TypedDict):
-    resume_text: str
-    extracted_content: Dict[str, Any]
-    current_question_number: int
-    questions: List[str]
-    answers: List[str]
-    evaluations: List[Dict[str, Any]]
-    final_score: float
-    conversation_history: List[Dict[str, str]]
-    session_id: str
-    created_at: str
-    status: str  # 'active', 'completed', 'error'
-
-class ResumeInterviewSystem:
-    def __init__(self, groq_api_key: str):
-        try:
-            self.llm = ChatGroq(
-                groq_api_key=groq_api_key,
-                model_name="llama3-70b-8192",
-                temperature=0.3
-            )
-            self.workflow = StateGraph(InterviewState)
-            self._setup_workflow()
-            logger.info("ResumeInterviewSystem initialized successfully")
-        except Exception as e:
-            logger.error(f"Failed to initialize ResumeInterviewSystem: {e}")
-            raise
-    
-    def _setup_workflow(self):
-        """Set up the LangGraph workflow"""
-        self.workflow.add_node("extract_resume", self.extract_resume_content)
-        self.workflow.add_node("generate_question", self.generate_question)
-        self.workflow.add_node("evaluate_response", self.evaluate_response)
-        self.workflow.add_node("finalize_score", self.calculate_final_score)
-        
-        self.workflow.set_entry_point("extract_resume")
-        
-        self.workflow.add_edge("extract_resume", "generate_question")
-        self.workflow.add_conditional_edges(
-            "generate_question",
-            self.should_continue_questions,
-            {
-                "continue": "evaluate_response",
-                "finish": "finalize_score"
-            }
-        )
-        self.workflow.add_edge("evaluate_response", "generate_question")
-        self.workflow.add_edge("finalize_score", END)
-        
-        self.app = self.workflow.compile()
-        graph=self()
-    
-    def extract_resume_content(self, state: InterviewState) -> InterviewState:
-        """Agent 1: Extract resume content"""
-        extraction_prompt = PromptTemplate(
-            input_variables=["resume_text"],
-            template="""
-            Extract the following information from the resume:
-            
-            Resume: {resume_text}
-            
-            Please extract and structure the following information in JSON format:
-            {{
-                "projects": ["list of projects with brief descriptions"],
-                "skills": ["list of technical and soft skills"],
-                "experience": ["list of work experiences with company, role, duration"],
-                "achievements": ["list of notable achievements and accomplishments"],
-                "education": ["educational background"],
-                "summary": "brief professional summary"
-            }}
-            
-            Return only the JSON object, no additional text.
-            """
-        )
-        
-        try:
-            response = self.llm.invoke([
-                HumanMessage(content=extraction_prompt.format(resume_text=state["resume_text"]))
-            ])
-            
-            extracted_content = json.loads(response.content)
-            state["extracted_content"] = extracted_content
-            state["current_question_number"] = 0
-            state["questions"] = []
-            state["answers"] = []
-            state["evaluations"] = []
-            state["conversation_history"] = []
-            state["status"] = "active"
-            
-            logger.info(f"Resume extraction completed for session {state.get('session_id')}")
-            return state
-            
-        except Exception as e:
-            logger.error(f"Error in resume extraction: {e}")
-            state["extracted_content"] = {
-                "projects": ["Unable to extract projects"],
-                "skills": ["Unable to extract skills"],
-                "experience": ["Unable to extract experience"],
-                "achievements": ["Unable to extract achievements"],
-                "education": ["Unable to extract education"],
-                "summary": "Unable to extract summary"
-            }
-            state["status"] = "error"
-            return state
-    
-    def generate_question(self, state: InterviewState) -> InterviewState:
-        """Agent 2: Generate interview questions"""
-        current_q_num = state["current_question_number"]
-        
-        try:
-            if current_q_num == 0:
-                question = "Please introduce yourself and tell me about your background."
-            else:
-                question_prompt = PromptTemplate(
-                    input_variables=["extracted_content", "previous_qa", "question_number"],
-                    template="""
-                    Based on the extracted resume content and previous interview responses, generate the next interview question.
-                    
-                    Resume Content: {extracted_content}
-                    
-                    Previous Q&A: {previous_qa}
-                    
-                    Current Question Number: {question_number}
-                    
-                    Generate a relevant, insightful question that:
-                    1. Explores the candidate's experience, skills, or projects
-                    2. Builds upon previous responses if applicable
-                    3. Is appropriate for question #{question_number} of 5
-                    4. Tests technical knowledge, problem-solving, or behavioral aspects
-                    
-                    Return only the question, no additional text.
-                    """
-                )
-                
-                previous_qa = ""
-                for i, (q, a) in enumerate(zip(state["questions"], state["answers"])):
-                    previous_qa += f"Q{i+1}: {q}\nA{i+1}: {a}\n\n"
-                
-                response = self.llm.invoke([
-                    HumanMessage(content=question_prompt.format(
-                        extracted_content=json.dumps(state["extracted_content"], indent=2),
-                        previous_qa=previous_qa,
-                        question_number=current_q_num + 1
-                    ))
-                ])
-                
-                question = response.content.strip()
-            
-            state["questions"].append(question)
-            logger.info(f"Generated question {current_q_num + 1} for session {state.get('session_id')}")
-            return state
-            
-        except Exception as e:
-            logger.error(f"Error generating question: {e}")
-            state["questions"].append("Could you tell me more about your experience?")
-            return state
-    
-    def evaluate_response(self, state: InterviewState) -> InterviewState:
-        """Agent 3: Evaluate user responses"""
-        current_idx = len(state["answers"]) - 1
-        current_question = state["questions"][current_idx]
-        current_answer = state["answers"][current_idx]
-        
-        evaluation_prompt = PromptTemplate(
-            input_variables=["question", "answer", "extracted_content", "question_number"],
-            template="""
-            Evaluate the candidate's response to the interview question.
-            
-            Question: {question}
-            Answer: {answer}
-            Question Number: {question_number}
-            Resume Content: {extracted_content}
-            
-            Provide evaluation in the following JSON format:
-            {{
-                "score": 0.0-10.0,
-                "strengths": ["list of strengths in the response"],
-                "weaknesses": ["list of areas for improvement"],
-                "relevance": 0.0-10.0,
-                "clarity": 0.0-10.0,
-                "technical_accuracy": 0.0-10.0,
-                "overall_feedback": "detailed feedback paragraph"
-            }}
-            
-            Return only the JSON object, no additional text.
-            """
-        )
-        
-        try:
-            response = self.llm.invoke([
-                HumanMessage(content=evaluation_prompt.format(
-                    question=current_question,
-                    answer=current_answer,
-                    extracted_content=json.dumps(state["extracted_content"], indent=2),
-                    question_number=current_idx + 1
-                ))
-            ])
-            
-            evaluation = json.loads(response.content)
-            state["evaluations"].append(evaluation)
-            logger.info(f"Evaluated response {current_idx + 1} for session {state.get('session_id')}")
-            
-        except Exception as e:
-            logger.error(f"Error in evaluation: {e}")
-            state["evaluations"].append({
-                "score": 5.0,
-                "strengths": ["Response provided"],
-                "weaknesses": ["Could not properly evaluate"],
-                "relevance": 5.0,
-                "clarity": 5.0,
-                "technical_accuracy": 5.0,
-                "overall_feedback": "Unable to evaluate response due to processing error."
-            })
-        
-        state["current_question_number"] += 1
-        return state
-    
-    def should_continue_questions(self, state: InterviewState) -> str:
-        """Decide whether to continue with more questions or finish"""
-        if state["current_question_number"] >= 5:
-            return "finish"
-        return "continue"
-    
-    def calculate_final_score(self, state: InterviewState) -> InterviewState:
-        """Calculate final interview score"""
-        if not state["evaluations"]:
-            state["final_score"] = 0.0
-            state["status"] = "completed"
-            return state
-        
-        total_score = 0
-        total_weight = 0
-        
-        for i, evaluation in enumerate(state["evaluations"]):
-            weight = i + 1
-            total_score += evaluation["score"] * weight
-            total_weight += weight
-        
-        state["final_score"] = round(total_score / total_weight, 2) if total_weight > 0 else 0.0
-        state["status"] = "completed"
-        logger.info(f"Interview completed for session {state.get('session_id')} with final score: {state['final_score']}")
-        return state
-
-# Initialize the interview system
-GROQ_API_KEY = os.getenv('GROQ_API_KEY')
+# Load environment variables
+load_dotenv()
+GROQ_API_KEY = os.getenv("GROQ_API_KEY")
 if not GROQ_API_KEY:
-    logger.warning("GROQ_API_KEY not found in environment variables")
+    logger.error("GROQ_API_KEY not found in .env file")
+    raise ValueError("GROQ_API_KEY not found. Please set it in your .env file.")
 
+# Initialize Groq LLM
 try:
-    interview_system = ResumeInterviewSystem(GROQ_API_KEY) if GROQ_API_KEY else None
+    llm = ChatGroq(model_name="llama3-70b-8192", groq_api_key=GROQ_API_KEY, temperature=0.7, max_tokens=200)
+    logger.info("Groq LLM initialized successfully")
 except Exception as e:
-    logger.error(f"Failed to initialize interview system: {e}")
-    interview_system = None
+    logger.error(f"Error initializing Groq LLM: {str(e)}", exc_info=True)
+    raise
 
-# API Routes
+# Load OpenCV Haar Cascade models
+try:
+    face_cascade = cv2.CascadeClassifier(cv2.data.haarcascades + 'haarcascade_frontalface_default.xml')
+    eye_cascade = cv2.CascadeClassifier(cv2.data.haarcascades + 'haarcascade_eye.xml')
+    if face_cascade.empty() or eye_cascade.empty():
+        raise IOError("Failed to load Haar models")
+    logger.info("Haar Cascade models loaded successfully.")
+except Exception as e:
+    logger.error(f"CRITICAL: Could not load Haar models. Proctoring disabled: {e}")
+    face_cascade = None
+    eye_cascade = None
 
-@app.route('/health', methods=['GET'])
+# === QUESTION GENERATION & EVALUATION ===
+memory_store = {}
+
+# Prompts for concise questions (2-3 lines)
+intro_prompt = PromptTemplate(
+    input_variables=["history"],
+    template="""You are an AI interviewer. Based on the history: {history}, ask: 'Introduce yourself briefly, including your role in a recent project.' (1 question, 2 lines max)"""
+)
+
+project_prompt = PromptTemplate(
+    input_variables=["history", "question_number"],
+    template="""Based on the history: {history}, ask a concise question about the candidate's project (e.g., 'What was the purpose of your project?', 'What challenges did you face?'). This is project question {question_number} out of 2. Keep it 2-3 lines."""
+)
+
+core_subject_prompt = PromptTemplate(
+    input_variables=["history", "question_number"],
+    template="""Based on the history: {history}, ask a concise question on Computer Organization, Operating Systems, or Data Structures (e.g., 'Explain cache memory in CO.', 'What is deadlock in OS?', 'How does a binary search tree work?'). This is core subject question {question_number} out of 3. Keep it 2-3 lines."""
+)
+
+# Enhanced evaluation prompt with explicit mark format requirement
+evaluation_prompt = PromptTemplate(
+    input_variables=["history"],
+    template="""Based on the interview history: {history}, 
+
+Evaluate the candidate's responses comprehensively. Provide:
+
+1. EVALUATION SUMMARY
+2. STRENGTHS: List specific strengths observed
+3. WEAKNESSES: List areas for improvement  
+4. FINAL MARK: Assign a numerical score out of 50 (e.g., "35 out of 50" or "42/50")
+5. JUSTIFICATION: Explain the reasoning behind the score
+
+IMPORTANT: The final mark MUST be clearly stated as "X out of 50" or "X/50" format where X is the numerical score.
+
+Format your response exactly as:
+EVALUATION SUMMARY
+[Brief summary here]
+
+STRENGTHS:
+[List strengths here]
+
+WEAKNESSES: 
+[List weaknesses here]
+
+FINAL MARK: [Score] out of 50
+
+JUSTIFICATION:
+[Detailed justification here]"""
+)
+
+def get_memory():
+    session_id = session.get('session_id', str(uuid4()))
+    session['session_id'] = session_id
+    if session_id not in memory_store:
+        memory_store[session_id] = ConversationBufferMemory()
+        logger.debug(f"Created new memory for session_id: {session_id}")
+    return memory_store[session_id]
+
+def extract_and_format_mark(evaluation_text):
+    """
+    Extract mark from evaluation text and ensure proper formatting
+    """
+    # Patterns to match various mark formats
+    patterns = [
+        r'FINAL MARK[:\s]*(\d+)\s*out of\s*50',  # "FINAL MARK: 45 out of 50"
+        r'FINAL MARK[:\s]*(\d+)/50',              # "FINAL MARK: 45/50"  
+        r'Final Mark[:\s]*(\d+)\s*out of\s*50',  # "Final Mark: 45 out of 50"
+        r'Final Mark[:\s]*(\d+)/50',              # "Final Mark: 45/50"
+        r'mark[:\s]*(\d+)\s*out of\s*50',        # "mark: 45 out of 50"
+        r'mark[:\s]*(\d+)/50',                    # "mark: 45/50"
+        r'score[:\s]*(\d+)\s*out of\s*50',       # "score: 45 out of 50"
+        r'score[:\s]*(\d+)/50',                   # "score: 45/50"
+        r'(\d+)\s*out of\s*50',                  # "45 out of 50"
+        r'(\d+)/50',                             # "45/50"
+    ]
+    
+    for pattern in patterns:
+        match = re.search(pattern, evaluation_text, re.IGNORECASE)
+        if match:
+            score = int(match.group(1))
+            # Ensure score is within valid range
+            if 0 <= score <= 50:
+                return score
+    
+    return None
+
+def analyze_performance_for_score(evaluation_text):
+    """
+    Analyze evaluation text to assign a reasonable default score
+    """
+    text_lower = evaluation_text.lower()
+    
+    # Positive indicators
+    positive_words = ['excellent', 'good', 'strong', 'clear', 'demonstrates', 'understanding', 'well']
+    negative_words = ['poor', 'weak', 'lacks', 'insufficient', 'unclear', 'limited', 'needs improvement']
+    
+    positive_count = sum(1 for word in positive_words if word in text_lower)
+    negative_count = sum(1 for word in negative_words if word in text_lower)
+    
+    # Basic scoring logic
+    if positive_count > negative_count * 2:
+        return 42  # Good performance
+    elif positive_count > negative_count:
+        return 35  # Average performance  
+    else:
+        return 28  # Below average performance
+
+def format_evaluation_with_mark(evaluation_text):
+    """
+    Ensure evaluation contains properly formatted mark
+    """
+    score = extract_and_format_mark(evaluation_text)
+    
+    if score is not None:
+        # Replace any existing mark format with standardized format
+        formatted_mark = f"FINAL MARK: {score} out of 50"
+        
+        # Replace existing mark patterns
+        patterns_to_replace = [
+            r'FINAL MARK[:\s]*\d+[/\s]*(?:out of\s*)?50',
+            r'Final Mark[:\s]*\d+[/\s]*(?:out of\s*)?50',
+            r'mark[:\s]*\d+[/\s]*(?:out of\s*)?50',
+            r'score[:\s]*\d+[/\s]*(?:out of\s*)?50'
+        ]
+        
+        for pattern in patterns_to_replace:
+            evaluation_text = re.sub(pattern, formatted_mark, evaluation_text, flags=re.IGNORECASE)
+        
+        # If no existing pattern found, add the mark
+        if not re.search(r'FINAL MARK:', evaluation_text, re.IGNORECASE):
+            # Insert mark before justification if present
+            if 'JUSTIFICATION:' in evaluation_text.upper():
+                evaluation_text = evaluation_text.replace('JUSTIFICATION:', f'{formatted_mark}\n\nJUSTIFICATION:')
+            else:
+                evaluation_text += f'\n\n{formatted_mark}'
+    else:
+        # If no score found, add a default one based on content analysis
+        default_score = analyze_performance_for_score(evaluation_text)
+        formatted_mark = f"FINAL MARK: {default_score} out of 50"
+        evaluation_text += f'\n\n{formatted_mark}'
+    
+    return evaluation_text
+
+def clean_response(response):
+    """
+    Clean response while preserving important formatting like marks
+    """
+    # Remove markdown formatting but preserve structure
+    cleaned = re.sub(r'\*\*|\*(?!\s*out\s*of)|\#', '', response)
+    
+    # Preserve "out of" phrases which might contain marks
+    cleaned = re.sub(r'_(?!.*out.*of)', '', cleaned)
+    
+    return cleaned.strip()
+
+def _generate_evaluation_and_cleanup(memory):
+    """
+    Generate evaluation with guaranteed mark display
+    """
+    history = memory.buffer_as_str
+    if not history.strip():
+        return {"evaluation": "No answers provided. No evaluation possible.\n\nFINAL MARK: 0 out of 50", "status": "evaluation"}
+    
+    try:
+        evaluation_chain = LLMChain(llm=llm, prompt=evaluation_prompt)
+        evaluation = evaluation_chain.run(history=history)
+        
+        # Clean and format the evaluation
+        cleaned_evaluation = clean_response(evaluation)
+        formatted_evaluation = format_evaluation_with_mark(cleaned_evaluation)
+        
+        # Cleanup session data
+        session_id = session.get('session_id')
+        if session_id:
+            if session_id in memory_store:
+                del memory_store[session_id]
+                logger.info(f"Memory cleared for session {session_id}")
+            if session_id in exam_states:
+                del exam_states[session_id]
+                logger.info(f"Exam state cleared for session {session_id}")
+        session.clear()
+        
+        logger.info("Evaluation generated successfully with mark")
+        return {"evaluation": formatted_evaluation, "status": "evaluation"}
+        
+    except Exception as e:
+        logger.error(f"Error generating evaluation: {str(e)}")
+        return {"evaluation": f"Error generating evaluation: {str(e)}\n\nFINAL MARK: 0 out of 50", "status": "evaluation"}
+
+# === PROCTORING SECTION ===
+exam_states = {}
+ALERT_THRESHOLD_SECONDS, ALERT_COOLDOWN_SECONDS, LONG_BLINK_SECONDS, MAX_WARNINGS = 2.0, 5.0, 1.5, 3
+
+def get_exam_state():
+    session_id = session.get('session_id', str(uuid4()))
+    session['session_id'] = session_id
+    if session_id not in exam_states:
+        exam_states[session_id] = {
+            "is_looking_away": False,
+            "away_start_time": 0,
+            "is_eyes_closed": False,
+            "eyes_closed_start_time": 0,
+            "warnings": 0,
+            "long_blink_count": 0,
+            "last_alert_time": 0,
+            "violation_detected": False
+        }
+    return exam_states[session_id]
+
+def reset_exam_state():
+    session_id = session.get('session_id')
+    if session_id and session_id in exam_states:
+        exam_states[session_id] = {
+            "is_looking_away": False,
+            "away_start_time": 0,
+            "is_eyes_closed": False,
+            "eyes_closed_start_time": 0,
+            "warnings": 0,
+            "long_blink_count": 0,
+            "last_alert_time": 0,
+            "violation_detected": False
+        }
+        logger.info("Exam state reset")
+
+def play_alert():
+    if WINSOUND_AVAILABLE:
+        try:
+            winsound.Beep(1000, 300)
+        except Exception as e:
+            logger.error(f"Could not play alert sound: {e}")
+    else:
+        print("\a")  # Fallback system beep
+
+def detect_gaze_direction(eye_frame):
+    try:
+        height, width = eye_frame.shape[:2]
+        if len(eye_frame.shape) > 2:
+            eye_frame = cv2.cvtColor(eye_frame, cv2.COLOR_BGR2GRAY)
+        threshold_eye = cv2.adaptiveThreshold(eye_frame, 255, cv2.ADAPTIVE_THRESH_MEAN_C, cv2.THRESH_BINARY_INV, 11, 2)
+        contours, _ = cv2.findContours(threshold_eye, cv2.RETR_TREE, cv2.CHAIN_APPROX_SIMPLE)
+        if contours:
+            M = cv2.moments(sorted(contours, key=cv2.contourArea, reverse=True)[0])
+            if M['m00'] != 0:
+                relative_x = (int(M['m10'] / M['m00'])) / width
+                if 0.35 < relative_x < 0.65:
+                    return "Center"
+                elif relative_x <= 0.35:
+                    return "Left"
+                else:
+                    return "Right"
+        return "Unknown"
+    except Exception as e:
+        logger.error(f"Error in detect_gaze_direction: {e}")
+        return "Error"
+
+def process_image(image_data):
+    if not face_cascade or not eye_cascade:
+        return {
+            "face_detected": False,
+            "looking_at_screen": False,
+            "warnings": 0,
+            "max_warnings": MAX_WARNINGS,
+            "violation_detected": False,
+            "look_direction": "Proctoring Disabled",
+            "eyes_closed": False,
+            "long_blink_count": 0,
+            "error": "OpenCV models not loaded"
+        }
+    exam_state, current_time = get_exam_state(), time.time()
+    face_detected, is_looking_at_screen, are_eyes_closed, look_direction = False, False, False, "Unknown"
+    try:
+        frame = cv2.imdecode(np.frombuffer(base64.b64decode(image_data), np.uint8), cv2.IMREAD_COLOR)
+        gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
+        faces = face_cascade.detectMultiScale(gray, 1.1, 5, minSize=(30, 30))
+        face_detected = len(faces) > 0
+        if face_detected:
+            x, y, w, h = sorted(faces, key=lambda f: f[2]*f[3], reverse=True)[0]
+            roi_gray = gray[y:y+h, x:x+w]
+            eyes = eye_cascade.detectMultiScale(roi_gray, 1.1, 5)
+            if len(eyes) >= 1:
+                are_eyes_closed = False
+                if exam_state["is_eyes_closed"] and (current_time - exam_state["eyes_closed_start_time"]) > LONG_BLINK_SECONDS:
+                    exam_state["long_blink_count"] += 1
+                    logger.info(f"Long blink detected. Count: {exam_state['long_blink_count']}")
+                exam_state["is_eyes_closed"] = False
+                look_direction = detect_gaze_direction(roi_gray[eyes[0][1]:eyes[0][1]+eyes[0][3], eyes[0][0]:eyes[0][0]+eyes[0][2]])
+                if look_direction == "Center":
+                    is_looking_at_screen, exam_state["is_looking_away"] = True, False
+                else:
+                    is_looking_at_screen = False
+                if not exam_state["is_looking_away"]:
+                    exam_state.update({"is_looking_away": True, "away_start_time": current_time})
+            else:
+                are_eyes_closed, is_looking_at_screen, look_direction = True, False, "Eyes Closed"
+                if not exam_state["is_eyes_closed"]:
+                    exam_state.update({"is_eyes_closed": True, "eyes_closed_start_time": current_time})
+                if not exam_state["is_looking_away"]:
+                    exam_state.update({"is_looking_away": True, "away_start_time": current_time})
+        else:
+            look_direction = "No Face Detected"
+            if not exam_state["is_looking_away"]:
+                exam_state.update({"is_looking_away": True, "away_start_time": current_time})
+        if exam_state["is_looking_away"] and (current_time - exam_state["away_start_time"]) > ALERT_THRESHOLD_SECONDS and (current_time - exam_state["last_alert_time"]) > ALERT_COOLDOWN_SECONDS:
+            exam_state["warnings"] += 1
+            play_alert()
+            exam_state["last_alert_time"] = current_time
+            logger.warning(f"Warning #{exam_state['warnings']} issued. Reason: {look_direction}")
+        if exam_state["warnings"] >= MAX_WARNINGS:
+            exam_state["violation_detected"] = True
+    except Exception as e:
+        logger.error(f"Error in process_image: {e}", exc_info=True)
+        look_direction = "Processing Error"
+    return {
+        "face_detected": face_detected,
+        "looking_at_screen": is_looking_at_screen,
+        "warnings": exam_state.get("warnings", 0),
+        "max_warnings": MAX_WARNINGS,
+        "violation_detected": exam_state.get("violation_detected", False),
+        "look_direction": look_direction,
+        "eyes_closed": are_eyes_closed,
+        "long_blink_count": exam_state.get("long_blink_count", 0)
+    }
+
+# === API ROUTES ===
+@interview_bp.route('/api/start', methods=['GET'])
+def start_interview():
+    try:
+        memory = get_memory()
+        session['question_count'] = 0
+        reset_exam_state()
+        history = memory.buffer_as_str
+        question = LLMChain(llm=llm, prompt=intro_prompt).run(history=history)
+        memory.save_context({"input": question}, {"output": ""})
+        logger.info("Interview started with intro question")
+        return jsonify({"question": clean_response(question), "status": "intro", "question_number": 1})
+    except Exception as e:
+        logger.error(f"Error in /api/start: {str(e)}", exc_info=True)
+        return jsonify({"error": str(e)}), 500
+
+@interview_bp.route('/api/submit', methods=['POST'])
+def submit_answer():
+    try:
+        user_answer = request.json.get('answer', '')
+        if not user_answer.strip():
+            logger.warning("Empty answer received")
+            return jsonify({"error": "Answer cannot be empty"}), 400
+        memory = get_memory()
+        question_count = session.get('question_count', 0)
+        history = memory.buffer_as_str
+        last_question = history.split('Assistant:')[-2].split('Human:')[0].strip() if 'Assistant:' in history else ""
+        memory.save_context({"input": last_question}, {"output": user_answer})
+        question_count += 1
+        session['question_count'] = question_count
+        if question_count == 1:
+            prompt, status, args = project_prompt, "project", {"question_number": 1}
+        elif question_count == 2:
+            prompt, status, args = project_prompt, "project", {"question_number": 2}
+        elif question_count <= 5:
+            prompt, status, args = core_subject_prompt, "core", {"question_number": question_count - 2}
+        else:
+            logger.info("Generating final evaluation")
+            return jsonify(_generate_evaluation_and_cleanup(memory))
+        question = LLMChain(llm=llm, prompt=prompt).run(history=memory.buffer_as_str, **args)
+        memory.save_context({"input": question}, {"output": ""})
+        logger.debug(f"Generated question {question_count}: {question}")
+        return jsonify({"question": clean_response(question), "status": status, "question_number": question_count})
+    except Exception as e:
+        logger.error(f"Error in /api/submit: {str(e)}", exc_info=True)
+        return jsonify({"error": str(e)}), 500
+
+@interview_bp.route('/api/finish', methods=['POST'])
+def finish_interview():
+    try:
+        logger.info("User requested to finish interview early")
+        memory = get_memory()
+        user_answer = request.json.get('answer', '')
+        if user_answer.strip():
+            history = memory.buffer_as_str
+            last_question = history.split('Assistant:')[-2].split('Human:')[0].strip() if 'Assistant:' in history else ""
+            memory.save_context({"input": last_question}, {"output": user_answer})
+            logger.debug("Saved final answer before evaluation")
+        return jsonify(_generate_evaluation_and_cleanup(memory))
+    except Exception as e:
+        logger.error(f"Error in /api/finish: {str(e)}", exc_info=True)
+        return jsonify({"error": str(e)}), 500
+
+@interview_bp.route('/api/process-frame', methods=['POST'])
+def process_frame():
+    try:
+        image_b64 = request.json['image']
+        if ',' in image_b64:
+            image_b64 = image_b64.split(',')[1]
+        proctor_data = process_image(image_b64)
+        return jsonify(proctor_data), 200
+    except Exception as e:
+        logger.error(f"Error in /api/process-frame endpoint: {e}")
+        return jsonify({"error": "Failed to process frame on server"}), 500
+
+@interview_bp.route('/api/end-exam', methods=['POST'])
+def end_exam():
+    try:
+        session_id = session.get('session_id')
+        if session_id and session_id in exam_states:
+            logger.info(f"Proctoring summary: {exam_states[session_id]}")
+            del exam_states[session_id]
+        if session_id and session_id in memory_store:
+            del memory_store[session_id]
+        session.clear()
+        logger.info("Exam ended and session cleared")
+        return jsonify({"status": "Exam ended"}), 200
+    except Exception as e:
+        logger.error(f"Error in /api/end-exam: {str(e)}")
+        return jsonify({"error": str(e)}), 500
+
+@interview_bp.route('/api/health', methods=['GET'])
 def health_check():
     """Health check endpoint"""
     return jsonify({
         "status": "healthy",
-        "timestamp": datetime.now().isoformat(),
-        "groq_configured": bool(GROQ_API_KEY),
-        "system_ready": bool(interview_system)
-    })
+        "groq_connected": bool(GROQ_API_KEY),
+        "opencv_loaded": bool(face_cascade and eye_cascade),
+        "active_sessions": len(memory_store)
+    }), 200
 
-@app.route('/interview/start', methods=['POST'])
-def start_interview():
-    """Start a new interview session"""
+@interview_bp.route('/api/reset-session', methods=['POST'])
+def reset_session():
+    """Reset current session data"""
     try:
-        if not interview_system:
-            return jsonify({"error": "Interview system not initialized. Check GROQ_API_KEY."}), 500
-        
-        data = request.get_json()
-        if not data or 'resume_text' not in data:
-            return jsonify({"error": "resume_text is required"}), 400
-        
-        resume_text = data['resume_text'].strip()
-        if not resume_text:
-            return jsonify({"error": "resume_text cannot be empty"}), 400
-        
-        # Generate unique session ID
-        session_id = str(uuid.uuid4())
-        
-        # Create initial state
-        initial_state = {
-            "resume_text": resume_text,
-            "extracted_content": {},
-            "current_question_number": 0,
-            "questions": [],
-            "answers": [],
-            "evaluations": [],
-            "final_score": 0.0,
-            "conversation_history": [],
-            "session_id": session_id,
-            "created_at": datetime.now().isoformat(),
-            "status": "initializing"
-        }
-        
-        # Run the workflow to extract resume and generate first question
-        result = interview_system.app.invoke(initial_state)
-        
-        # Store session
-        interview_sessions[session_id] = result
-        
-        # Return session info and first question
-        response_data = {
-            "session_id": session_id,
-            "status": result["status"],
-            "extracted_content": result["extracted_content"],
-            "current_question": result["questions"][0] if result["questions"] else None,
-            "question_number": 1,
-            "total_questions": 5
-        }
-        
-        logger.info(f"Started interview session {session_id}")
-        return jsonify(response_data), 201
-        
+        session_id = session.get('session_id')
+        if session_id:
+            if session_id in memory_store:
+                del memory_store[session_id]
+            if session_id in exam_states:
+                del exam_states[session_id]
+        session.clear()
+        logger.info("Session reset successfully")
+        return jsonify({"status": "Session reset successfully"}), 200
     except Exception as e:
-        logger.error(f"Error starting interview: {e}")
-        return jsonify({"error": "Failed to start interview", "details": str(e)}), 500
+        logger.error(f"Error in /api/reset-session: {str(e)}")
+        return jsonify({"error": str(e)}), 500
 
-@app.route('/interview/<session_id>/answer', methods=['POST'])
-def submit_answer(session_id):
-    """Submit an answer to the current question"""
-    try:
-        if session_id not in interview_sessions:
-            return jsonify({"error": "Session not found"}), 404
-        
-        data = request.get_json()
-        if not data or 'answer' not in data:
-            return jsonify({"error": "answer is required"}), 400
-        
-        answer = data['answer'].strip()
-        if not answer:
-            return jsonify({"error": "answer cannot be empty"}), 400
-        
-        # Get current session state
-        current_state = interview_sessions[session_id]
-        
-        if current_state["status"] == "completed":
-            return jsonify({"error": "Interview already completed"}), 400
-        
-        # Add the user's answer
-        current_state["answers"].append(answer)
-        
-        # Continue the workflow
-        result = interview_system.app.invoke(current_state)
-        
-        # Update session
-        interview_sessions[session_id] = result
-        
-        # Prepare response
-        current_question_num = len(result["questions"])
-        latest_evaluation = result["evaluations"][-1] if result["evaluations"] else None
-        
-        response_data = {
-            "session_id": session_id,
-            "status": result["status"],
-            "question_number": current_question_num,
-            "total_questions": 5,
-            "evaluation": latest_evaluation,
-            "next_question": result["questions"][-1] if len(result["questions"]) > len(result["answers"]) else None,
-            "final_score": result["final_score"] if result["status"] == "completed" else None,
-            "interview_completed": result["status"] == "completed"
-        }
-        
-        logger.info(f"Processed answer for session {session_id}, question {current_question_num}")
-        return jsonify(response_data), 200
-        
-    except Exception as e:
-        logger.error(f"Error processing answer for session {session_id}: {e}")
-        return jsonify({"error": "Failed to process answer", "details": str(e)}), 500
-
-@app.route('/interview/<session_id>/status', methods=['GET'])
-def get_interview_status(session_id):
-    """Get current interview status"""
-    try:
-        if session_id not in interview_sessions:
-            return jsonify({"error": "Session not found"}), 404
-        
-        session = interview_sessions[session_id]
-        
-        response_data = {
-            "session_id": session_id,
-            "status": session["status"],
-            "created_at": session["created_at"],
-            "current_question_number": len(session["questions"]),
-            "total_questions": 5,
-            "answers_given": len(session["answers"]),
-            "current_question": session["questions"][-1] if session["questions"] else None,
-            "final_score": session["final_score"] if session["status"] == "completed" else None,
-            "extracted_content": session["extracted_content"]
-        }
-        
-        return jsonify(response_data), 200
-        
-    except Exception as e:
-        logger.error(f"Error getting status for session {session_id}: {e}")
-        return jsonify({"error": "Failed to get status", "details": str(e)}), 500
-
-@app.route('/interview/<session_id>/summary', methods=['GET'])
-def get_interview_summary(session_id):
-    """Get complete interview summary"""
-    try:
-        if session_id not in interview_sessions:
-            return jsonify({"error": "Session not found"}), 404
-        
-        session = interview_sessions[session_id]
-        
-        # Build Q&A pairs with evaluations
-        qa_pairs = []
-        for i, (question, answer) in enumerate(zip(session["questions"], session["answers"])):
-            evaluation = session["evaluations"][i] if i < len(session["evaluations"]) else None
-            qa_pairs.append({
-                "question_number": i + 1,
-                "question": question,
-                "answer": answer,
-                "evaluation": evaluation
-            })
-        
-        summary = {
-            "session_id": session_id,
-            "status": session["status"],
-            "created_at": session["created_at"],
-            "extracted_resume_content": session["extracted_content"],
-            "questions_and_answers": qa_pairs,
-            "final_score": session["final_score"],
-            "total_questions_asked": len(session["questions"]),
-            "total_answers_given": len(session["answers"])
-        }
-        
-        return jsonify(summary), 200
-        
-    except Exception as e:
-        logger.error(f"Error getting summary for session {session_id}: {e}")
-        return jsonify({"error": "Failed to get summary", "details": str(e)}), 500
-
-@app.route('/interview/<session_id>', methods=['DELETE'])
-def delete_interview_session(session_id):
-    """Delete an interview session"""
-    try:
-        if session_id not in interview_sessions:
-            return jsonify({"error": "Session not found"}), 404
-        
-        del interview_sessions[session_id]
-        logger.info(f"Deleted interview session {session_id}")
-        
-        return jsonify({"message": "Session deleted successfully"}), 200
-        
-    except Exception as e:
-        logger.error(f"Error deleting session {session_id}: {e}")
-        return jsonify({"error": "Failed to delete session", "details": str(e)}), 500
-
-@app.route('/interview/sessions', methods=['GET'])
-def list_interview_sessions():
-    """List all interview sessions"""
-    try:
-        sessions_list = []
-        for session_id, session in interview_sessions.items():
-            sessions_list.append({
-                "session_id": session_id,
-                "status": session["status"],
-                "created_at": session["created_at"],
-                "questions_asked": len(session["questions"]),
-                "answers_given": len(session["answers"]),
-                "final_score": session["final_score"] if session["status"] == "completed" else None
-            })
-        
-        return jsonify({
-            "sessions": sessions_list,
-            "total_sessions": len(sessions_list)
-        }), 200
-        
-    except Exception as e:
-        logger.error(f"Error listing sessions: {e}")
-        return jsonify({"error": "Failed to list sessions", "details": str(e)}), 500
-
-@app.errorhandler(404)
-def not_found(error):
-    return jsonify({"error": "Not found"}), 404
-
-@app.errorhandler(500)
-def internal_error(error):
-    return jsonify({"error": "Internal server error"}), 500
-
-if __name__ == '__main__':
-    # Set environment variables if not already set
-    if not os.getenv('GROQ_API_KEY'):
-        print("Warning: GROQ_API_KEY environment variable not set")
-        print("Please set it using: export GROQ_API_KEY='your_api_key_here'")
+# Test function to verify mark extraction (for debugging)
+def test_mark_extraction():
+    """
+    Test function to verify mark extraction works correctly
+    """
+    test_cases = [
+        "FINAL MARK: 45 out of 50",
+        "Final Mark: 38/50", 
+        "The candidate scored 42 out of 50",
+        "Overall mark 35/50",
+        "Evaluation shows good performance with a score of 40 out of 50",
+        "Strengths: Good knowledge\nWeaknesses: Some gaps\nJustification: Overall decent performance"  # No mark case
+    ]
     
-    app.run(debug=True, host='0.0.0.0', port=5001)  # Changed port to 5001
+    print("Testing mark extraction:")
+    for test in test_cases:
+        score = extract_and_format_mark(test)
+        formatted = format_evaluation_with_mark(test)
+        print(f"Original: '{test[:50]}...'")
+        print(f"Extracted Score: {score}")
+        print(f"Formatted: {formatted}")
+        print("-" * 50)
+
+# Note: This module is registered as a Blueprint by the main app

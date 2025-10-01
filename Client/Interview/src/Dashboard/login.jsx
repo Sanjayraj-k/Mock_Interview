@@ -1,8 +1,8 @@
 import React, { useState, useContext } from 'react';
+import { User } from 'lucide-react';
 import { Link, useNavigate } from 'react-router-dom';
-import { AuthContext } from '../context/AuthContext'; // Adjust path if needed
-import hrlogin from '../images/hrlogin.png'; // Adjust path as needed
-
+import { AuthContext } from '../context/AuthContext' // Adjust path if needed
+import hrImage from '../assets/hr.png'; 
 export default function Login() {
   const [loginForm, setLoginForm] = useState({ email: '', password: '' });
   const [error, setError] = useState('');
@@ -20,26 +20,20 @@ export default function Login() {
       });
       const data = await response.json();
       if (!response.ok) throw new Error(data.error || 'Failed to login');
-
-      // Update auth state
-      handleHRLogin({ email: loginForm.email, ...data });
-
-      // Navigate to HR dashboard
+      handleHRLogin({ email: loginForm.email, ...data }); // Update auth state
       navigate('/hr/dashboard');
+      console.log() // Navigate to HR dashboard
     } catch (err) {
       setError(err.message || 'Network error. Please try again.');
     }
   };
-
   return (
     <div className="min-h-screen bg-white flex items-center justify-center p-4">
       <div className="bg-white rounded-2xl shadow-2xl p-8 w-full max-w-md border border-gray-100">
         <div className="text-center mb-8">
-          <img
-            src={hrlogin}
-            alt="HR Login"
-            className="w-40 h-40 mx-auto mb-4 object-contain" 
-          />
+        <div className="inline-flex items-center justify-center w-25 h-25 mb-4">
+            <img src={hrImage} alt="HR Portal" className="w-28 h-28 object-contain rounded-2xl shadow" />
+          </div>
           <h1 className="text-2xl font-bold text-gray-900 mb-2">HR Login Portal</h1>
           <p className="text-gray-600">AI Mock Interview Platform</p>
         </div>

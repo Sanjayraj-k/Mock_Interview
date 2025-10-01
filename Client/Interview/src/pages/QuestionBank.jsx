@@ -21,7 +21,7 @@ const InterviewPlatform = () => {
       setError(null);
       
       // Replace with your actual backend API endpoint
-      const response = await axios.get('http://localhost:8000/api/questions');
+      const response = await axios.get('http://localhost:5000/questionbank/api/questions');
       
       if (response.data.success) {
         setQuestions(response.data.questions);
@@ -148,7 +148,7 @@ const InterviewPlatform = () => {
         {error && !loading && (
           <div className="bg-red-50 border border-red-200 rounded-lg p-6 mb-6">
             <div className="flex items-center gap-3">
-              <div className="text-red-600">⚠</div>
+              <div className="text-red-600">⚠️</div>
               <div>
                 <p className="text-red-800 font-medium">Error loading questions</p>
                 <p className="text-red-600 text-sm">{error}</p>

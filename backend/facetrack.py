@@ -1,5 +1,4 @@
-from flask import Flask, request, jsonify
-from flask_cors import CORS
+from flask import Blueprint, request, jsonify
 import cv2
 import numpy as np
 import base64
@@ -13,8 +12,8 @@ import sys
 logging.basicConfig(level=logging.DEBUG)
 logger = logging.getLogger(__name__)
 
-app = Flask(__name__)
-CORS(app, resources={r"/*": {"origins": "http://localhost:5173"}})
+# Blueprint for Face Tracking / Proctoring
+facetrack_bp = Blueprint('facetrack', __name__, url_prefix='/facetrack')
 
 # Test basic imports and environment
 logger.info("Starting Flask application")
@@ -166,7 +165,7 @@ def process_image(image_data):
             "error": str(e)
         }
 
-@app.route('/start-exam', methods=['POST'])
+@facetrack_bp.route('/start-exam', methods=['POST'])
 def start_exam():
     global warnings, long_blink_count
     warnings = 0
@@ -174,7 +173,7 @@ def start_exam():
     logger.info("Exam session started")
     return jsonify({"status": "Exam started"}), 200
 
-@app.route('/process-frame', methods=['POST'])
+@facetrack_bp.route('/process-frame', methods=['POST'])
 def process_frame():
     try:
         data = request.json
@@ -188,7 +187,7 @@ def process_frame():
         logger.error(f"Error in process_frame: {e}")
         return jsonify({"error": str(e)}), 500
 
-@app.route('/end-exam', methods=['POST'])
+@facetrack_bp.route('/end-exam', methods=['POST'])
 def end_exam():
     global warnings, long_blink_count
     warnings = 0
@@ -196,7 +195,7 @@ def end_exam():
     logger.info("Exam session ended")
     return jsonify({"status": "Exam ended"}), 200
 
-@app.route('/toggle_alerts', methods=['GET'])
+@facetrack_bp.route('/toggle_alerts', methods=['GET'])
 def toggle_alerts():
     global ALERT_ENABLED
     ALERT_ENABLED = not ALERT_ENABLED
@@ -204,6 +203,4 @@ def toggle_alerts():
     logger.info(f"Alerts {status}")
     return jsonify({"status": f"Alerts {status}"}), 200
 
-if __name__ == '__main__':
-    logger.info("Starting Flask server on port 4000")
-    app.run(host='0.0.0.0', port=4001, debug=True, use_reloader=False)
+# Note: This module is registered as a Blueprint by the main app

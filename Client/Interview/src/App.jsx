@@ -4,27 +4,26 @@ import { AuthContext, AuthProvider } from './context/AuthContext';
 import Login from './Dashboard/login';
 import Signup from './Dashboard/Signup';
 import HRDashboard from './Dashboard/Hr';
-import LandingPage from './Auth/LandingPage';
+import LandingPage from './Auth/Landingpage';
 import StudentLogin from './Auth/login'; // Renamed from Logins for clarity
 import UserSelect from './pages/UserSelect.jsx';
 import FaceDetection from './pages/FaceDetection.jsx';
 import Protected from './pages/Protected.jsx'; // Added assuming it exists
 import GoogleFormWithWebcam from './pages/GoogleForm.jsx';
 import WebCam from './pages/webCam.jsx'; // Adjusted extension for consistency
-import CodingPage from './pages/Codingpage.jsx';
-import Co from './pages/co.jsx'; 
 import Round1 from './pages/Round1.jsx';
 import Interview from './pages/Interview.jsx'; // Assuming this is the interview page
-import Uploadpage from './student/upload.jsx'; // Assuming this is the upload page
-import Ats from './pages/ats.jsx';
+import Uploadpage from './pages/UploadPage.jsx'; // Assuming this is the upload page
+import Ats from './pages/Ats.jsx';
+import Upload from './student/Upload.jsx'
+import PracticeQuiz from './pages/PracticeQuiz.jsx';
+import CodingPage from './pages/Coding.jsx';
 import StudentLandingpage from './Auth/StudentLandingpage.jsx'; // Assuming this is the landing page for students
 import QuestionBank from './pages/QuestionBank.jsx';
-import QuestionForum from './pages/QuestionForum.jsx';
-import CompanyLookup from './student/company.jsx';
+import QuestionForum from './pages/QuestionForum.jsx'; // Assuming this is the question forum page
 import Assistant from './pages/Assistant.jsx';
-
-// Assuming this is the company lookup page
-// Assuming this is the question forum page
+import CompanyProfileFetcher from './student/CompanyFetch.jsx';
+import Domain from './pages/Domainforum.jsx';
 // Assuming this is the question bank page
 // Assuming this is the ATS page
 // Adjusted import for clarity
@@ -52,7 +51,7 @@ function App() {
           <Routes>
             {/* 1. Landing Page Route - Main entry point */}
             <Route path="/" element={<LandingPage />} />
-            
+
             {/* 2. HR Routes */}
             <Route path="/hr">
               <Route index element={<Navigate to="/hr/login" replace />} />
@@ -67,7 +66,7 @@ function App() {
                 }
               />
             </Route>
-
+            <Route path="scrap" element={<CompanyProfileFetcher/>} />
             {/* 3. Candidate Route */}
             <Route path="/candidate">
               <Route index element={<Navigate to="/candidate/login" replace />} />
@@ -79,10 +78,11 @@ function App() {
               <Route path="questionBank" element={<QuestionBank/>}/>
               <Route path="ats" element={<Ats />} />
               <Route path="questionforum" element={<QuestionForum/>} />
-              <Route path="upload" element={<Uploadpage />} />
-              <Route path="company" element={<CompanyLookup />} />
-              <Route path="assistant" element={<Assistant />} />
-              
+              <Route path="upload" element={<Upload />} />
+              <Route path="practicequiz" element={<PracticeQuiz />} />
+              <Route path="Assistant" element={<Assistant/>}/>
+              <Route path="domain" element={<Domain/>}/>
+              <Route path="companyscrap" element={<CompanyProfileFetcher/>}/>
             </Route>
 
             {/* 4. Protected Candidate Pages */}
@@ -96,6 +96,15 @@ function App() {
             />
             <Route
               path="/face"
+              element={
+                <ProtectedCandidateRoute>
+                  <FaceDetection />
+                </ProtectedCandidateRoute>
+              }
+            />
+            {/* Alias route in case older code navigates here after ID upload */}
+            <Route
+              path="/uploadface"
               element={
                 <ProtectedCandidateRoute>
                   <FaceDetection />

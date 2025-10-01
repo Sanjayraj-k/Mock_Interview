@@ -42,7 +42,7 @@ const ATSResumeScorer = () => {
     formData.append('job_description', jobDescription);
 
     try {
-      const response = await fetch('http://localhost:5000/analyze-resume', {
+      const response = await fetch('http://localhost:5000/ats/analyze-resume', {
         method: 'POST',
         body: formData,
       });
@@ -59,7 +59,7 @@ const ATSResumeScorer = () => {
         setResults(data);
       }
     } catch (err) {
-      setError(`Error: ${err.message}. Make sure the Flask server is running on http://localhost:5000`);
+      setError(`Error: ${err.message}. Make sure the backend is running on http://localhost:5000 and the ATS route /ats/analyze-resume is reachable.`);
     } finally {
       setLoading(false);
     }

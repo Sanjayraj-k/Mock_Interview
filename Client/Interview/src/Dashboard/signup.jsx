@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
+import { User } from 'lucide-react';
 import { Link, useNavigate } from 'react-router-dom';
-import hrImage from '../images/hrlogin.png'; 
-
+import hrImage from '../assets/hr.png'; 
 export default function Signup() {
   const [signupForm, setSignupForm] = useState({ email: '', password: '' });
   const [error, setError] = useState('');
@@ -25,24 +25,18 @@ export default function Signup() {
   };
 
   return (
-    <div className="min-h-screen bg-white flex items-center justify-center p-4">
-      <div className="bg-white rounded-2xl shadow-2xl p-8 w-full max-w-md border border-gray-100">
-        
-        {/* Logo Section */}
+    <div className="min-h-screen bg-gradient-to-br from-blue-600 via-purple-600 to-blue-800 flex items-center justify-center p-4">
+      <div className="bg-white rounded-2xl shadow-2xl p-8 w-full max-w-md">
         <div className="text-center mb-8">
-          <img
-            src={hrImage}
-            alt="HR Portal"
-            className="w-40 h-40 mx-auto mb-4 object-contain rounded-2xl shadow"
-          />
+        <div className="inline-flex items-center justify-center w-25 h-25 mb-4">
+            <img src={hrImage} alt="HR Portal" className="w-28 h-28 object-contain rounded-2xl shadow" />
+          </div>
           <h1 className="text-2xl font-bold text-gray-900 mb-2">HR Signup Portal</h1>
           <p className="text-gray-600">AI Mock Interview Platform</p>
         </div>
         
-        {/* Form Section */}
         <form onSubmit={handleSignup} className="space-y-6">
           {error && <p className="text-red-600 text-sm">{error}</p>}
-          
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-2">Email Address</label>
             <input
@@ -75,7 +69,6 @@ export default function Signup() {
           </button>
         </form>
         
-        {/* Footer */}
         <p className="text-center text-sm text-gray-600 mt-4">
           Already have an account?{' '}
           <Link to="/hr/login" className="text-blue-600 hover:underline">

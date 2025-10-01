@@ -3,8 +3,7 @@ import axios from "axios";
 import { useNavigate } from "react-router-dom";
 import { Mail, Lock, Hash, UserCheck, Eye, EyeOff } from "lucide-react";
 import { AuthContext } from "../context/AuthContext"; // Adjust path as needed
-import studentslogin from "../images/studlogin.png"; // Adjust path as needed
-
+import studentImage from '../assets/stud.png'; 
 function StudentLogin() {
   const [form, setForm] = useState({
     email: "",
@@ -12,17 +11,16 @@ function StudentLogin() {
     role: "",
     rollNo: ""
   });
-
+  
   const [loading, setLoading] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
   const [error, setError] = useState("");
-
+  
   const navigate = useNavigate();
   const { handleCandidateLogin } = useContext(AuthContext);
 
   const handleChange = (e) => {
     setForm({ ...form, [e.target.name]: e.target.value });
-    // Clear error when user starts typing
     if (error) setError("");
   };
 
@@ -38,7 +36,7 @@ function StudentLogin() {
         rollNo: form.rollNo,
         role: form.role
       });
-
+      
       // Store user details in localStorage
       const candidateData = {
         id: res.data.student.id,
@@ -49,10 +47,10 @@ function StudentLogin() {
         token: res.data.token
       };
       localStorage.setItem("candidate", JSON.stringify(candidateData));
-
+      
       // Update AuthContext
       handleCandidateLogin(candidateData);
-
+      
       // Navigate to user-select page after successful login
       navigate("/user-select");
       console.log("Login successful:", res.data);
@@ -66,12 +64,11 @@ function StudentLogin() {
   return (
     <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-blue-50 to-indigo-100">
       <div className="bg-white p-8 rounded-2xl shadow-xl w-full max-w-md">
-        <div className="text-center mb-10">
-          <img
-            src={studentslogin}
-            alt="Login Illustration"
-            className="w-40 h-40 mx-auto mb-4 object-contain"
-          />
+        <div className="text-center mb-8">
+          
+        <div className="inline-flex items-center justify-center w-25 h-25 mb-4">
+        <img src={studentImage} alt="HR Portal" className="w-28 h-28 object-contain rounded-2xl shadow" />
+          </div>
           <h2 className="text-3xl font-bold text-gray-800">Candidate Login</h2>
           <p className="text-gray-600 mt-2">Enter your credentials to access the portal</p>
         </div>

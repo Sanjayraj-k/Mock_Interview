@@ -13,9 +13,39 @@ app = Flask(__name__)
 import os
 from flask_cors import CORS
 from pymongo import MongoClient
+from aiassistant import aiassistant_bp
+from ats import ats_bp
+from interview import interview_bp
+from facetrack import facetrack_bp
+from quiz import quiz_bp
+from questionbank import questionbank_bp, init_questionbank, initialize_database
+from companyscrap_bp import companyscrap_bp
+from Domainforum import domainforum_bp, init_domainforum
+from practicequiz_bp import practicequiz_bp
 
-# --- CORS setup ---
-CORS(app, resources={r"/api/*": {"origins": "http://localhost:5173"}})
+# --- CORS & Session setup ---
+app.secret_key = os.environ.get("FLASK_SECRET_KEY", "dev-secret-key")
+CORS(app, resources={r"/*": {"origins": "http://localhost:5173"}}, supports_credentials=True)
+
+# --- Register Blueprints ---
+app.register_blueprint(aiassistant_bp)
+app.register_blueprint(ats_bp)
+app.register_blueprint(interview_bp)
+app.register_blueprint(facetrack_bp)
+app.register_blueprint(quiz_bp)
+app.register_blueprint(questionbank_bp)
+app.register_blueprint(companyscrap_bp)
+app.register_blueprint(domainforum_bp)
+app.register_blueprint(practicequiz_bp)
+
+# Initialize services that require app context
+with app.app_context():
+    init_questionbank(app)
+    init_domainforum(app)
+    try:
+        initialize_database()
+    except Exception:
+        pass
 
 # --- Database connection ---
 mongo_uri = os.environ.get("MONGO_URI", "mongodb://localhost:27017/")

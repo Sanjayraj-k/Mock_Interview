@@ -8,12 +8,12 @@ const QuestionContribute = () => {
   const [error, setError] = useState(null);
   const [showContributeForm, setShowContributeForm] = useState(false);
   const [formData, setFormData] = useState({
-    name: '',
-    email: '',
+    title: '',
+    category: '',
     company: '',
-    round: '',
+    difficulty: '',
+    experience: '',
     questionType: 'text',
-    textContent: '',
     pdfFile: null
   });
   const [submitting, setSubmitting] = useState(false);
@@ -25,16 +25,18 @@ const QuestionContribute = () => {
       setLoading(true);
       setError(null);
       
-      const response = await axios.get('http://localhost:5001/api/questions');
+      const response = await axios.get('http://localhost:5000/questionbank/api/questions');
       
       if (response.data.success) {
-        setQuestions(response.data.data);
+        setQuestions(response.data.questions || []);
       } else {
         setError('Failed to fetch questions');
+        setQuestions([]);
       }
     } catch (err) {
       console.error('Error fetching questions:', err);
       setError('Failed to load questions. Please try again later.');
+      setQuestions([]);
     } finally {
       setLoading(false);
     }
@@ -72,19 +74,8 @@ const QuestionContribute = () => {
   const handleSubmit = async (e) => {
     e.preventDefault();
     
-    if (!formData.name || !formData.email || !formData.company || !formData.round) {
+    if (!formData.title || !formData.category || !formData.company || !formData.difficulty || !formData.experience) {
       showNotification('Please fill in all required fields', 'error');
-      return;
-    }
-
-    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-    if (!emailRegex.test(formData.email)) {
-      showNotification('Please enter a valid email address', 'error');
-      return;
-    }
-
-    if (formData.questionType === 'text' && !formData.textContent) {
-      showNotification('Please enter the question text', 'error');
       return;
     }
 
@@ -98,12 +89,12 @@ const QuestionContribute = () => {
 
       if (formData.questionType === 'text') {
         // Submit text question
-        const response = await axios.post('http://localhost:5001/api/questions/text', {
-          name: formData.name,
-          email: formData.email,
+        const response = await axios.post('http://localhost:5000/questionbank/api/questions/text', {
+          title: formData.title,
+          category: formData.category,
           company: formData.company,
-          round: formData.round,
-          content: formData.textContent
+          difficulty: formData.difficulty,
+          experience: formData.experience
         });
 
         if (response.data.success) {
@@ -116,13 +107,14 @@ const QuestionContribute = () => {
       } else {
         // Submit PDF question
         const formDataToSend = new FormData();
-        formDataToSend.append('name', formData.name);
-        formDataToSend.append('email', formData.email);
+        formDataToSend.append('title', formData.title);
+        formDataToSend.append('category', formData.category);
         formDataToSend.append('company', formData.company);
-        formDataToSend.append('round', formData.round);
+        formDataToSend.append('difficulty', formData.difficulty);
+        formDataToSend.append('experience', formData.experience);
         formDataToSend.append('pdfFile', formData.pdfFile);
 
-        const response = await axios.post('http://localhost:5001/api/questions/pdf', formDataToSend, {
+        const response = await axios.post('http://localhost:5000/questionbank/api/questions/pdf', formDataToSend, {
           headers: {
             'Content-Type': 'multipart/form-data'
           }
@@ -139,12 +131,12 @@ const QuestionContribute = () => {
 
       // Reset form
       setFormData({
-        name: '',
-        email: '',
+        title: '',
+        category: '',
         company: '',
-        round: '',
+        difficulty: '',
+        experience: '',
         questionType: 'text',
-        textContent: '',
         pdfFile: null
       });
       
@@ -168,7 +160,7 @@ const QuestionContribute = () => {
 
   const incrementViews = async (questionId) => {
     try {
-      const response = await axios.patch(`http://localhost:5001/api/questions/${questionId}/views`);
+      const response = await axios.patch(`http://localhost:5000/questionbank/api/questions/${questionId}/views`);
       if (response.data.success) {
         // Update the question in the local state
         setQuestions(prev => prev.map(q => 
@@ -182,7 +174,7 @@ const QuestionContribute = () => {
 
   const handleDownloadPDF = async (questionId, fileName) => {
     try {
-      const response = await axios.get(`http://localhost:5001/api/questions/${questionId}/download`, {
+      const response = await axios.get(`http://localhost:5000/questionbank/api/questions/${questionId}/download`, {
         responseType: 'blob'
       });
       
@@ -282,32 +274,37 @@ const QuestionContribute = () => {
                   <div className="grid md:grid-cols-2 gap-4">
                     <div className="space-y-2">
                       <label className="block text-sm font-semibold text-gray-700">
-                        Full Name *
+                        Question Title *
                       </label>
                       <input
                         type="text"
-                        name="name"
-                        value={formData.name}
+                        name="title"
+                        value={formData.title}
                         onChange={handleInputChange}
                         className="w-full p-4 border border-gray-200 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all duration-200 bg-white/50 backdrop-blur-sm"
-                        placeholder="Enter your full name"
+                        placeholder="Enter the question title"
                         required
                       />
                     </div>
 
                     <div className="space-y-2">
                       <label className="block text-sm font-semibold text-gray-700">
-                        Email Address *
+                        Category *
                       </label>
-                      <input
-                        type="email"
-                        name="email"
-                        value={formData.email}
+                      <select
+                        name="category"
+                        value={formData.category}
                         onChange={handleInputChange}
                         className="w-full p-4 border border-gray-200 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all duration-200 bg-white/50 backdrop-blur-sm"
-                        placeholder="Enter your email address"
                         required
-                      />
+                      >
+                        <option value="">Select category</option>
+                        <option value="Behavioral">Behavioral</option>
+                        <option value="Technical">Technical</option>
+                        <option value="System Design">System Design</option>
+                        <option value="Problem Solving">Problem Solving</option>
+                        <option value="Leadership">Leadership</option>
+                      </select>
                     </div>
                   </div>
 
@@ -329,17 +326,20 @@ const QuestionContribute = () => {
 
                     <div className="space-y-2">
                       <label className="block text-sm font-semibold text-gray-700">
-                        Interview Round *
+                        Difficulty Level *
                       </label>
-                      <input
-                        type="text"
-                        name="round"
-                        value={formData.round}
+                      <select
+                        name="difficulty"
+                        value={formData.difficulty}
                         onChange={handleInputChange}
                         className="w-full p-4 border border-gray-200 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all duration-200 bg-white/50 backdrop-blur-sm"
-                        placeholder="e.g., Technical Round 1, System Design"
                         required
-                      />
+                      >
+                        <option value="">Select difficulty</option>
+                        <option value="Easy">Easy</option>
+                        <option value="Medium">Medium</option>
+                        <option value="Hard">Hard</option>
+                      </select>
                     </div>
                   </div>
 
@@ -364,8 +364,8 @@ const QuestionContribute = () => {
                         Question Content *
                       </label>
                       <textarea
-                        name="textContent"
-                        value={formData.textContent}
+                        name="title"
+                        value={formData.title}
                         onChange={handleInputChange}
                         rows={4}
                         className="w-full p-4 border border-gray-200 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all duration-200 bg-white/50 backdrop-blur-sm resize-none"
@@ -405,6 +405,21 @@ const QuestionContribute = () => {
                       </div>
                     </div>
                   )}
+
+                  <div className="space-y-2">
+                    <label className="block text-sm font-semibold text-gray-700">
+                      Experience/Explanation *
+                    </label>
+                    <textarea
+                      name="experience"
+                      value={formData.experience}
+                      onChange={handleInputChange}
+                      rows={4}
+                      className="w-full p-4 border border-gray-200 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all duration-200 bg-white/50 backdrop-blur-sm resize-none"
+                      placeholder="Provide your experience, approach, or explanation for this question..."
+                      required
+                    />
+                  </div>
 
                   <div className="flex gap-4 pt-6">
                     <button
@@ -480,14 +495,14 @@ const QuestionContribute = () => {
                   Recent Questions
                 </h2>
                 <div className="px-4 py-2 bg-white/80 backdrop-blur-sm rounded-xl border border-white/20 text-gray-600 font-medium">
-                  {questions.length} questions available
+                  {questions?.length || 0} questions available
                 </div>
               </div>
 
               <div className="grid gap-6">
-                {questions.map((question, index) => (
+                {questions && questions.length > 0 && questions.map((question, index) => (
                   <div
-                    key={question._id}
+                    key={question._id || index}
                     className="group bg-white/80 backdrop-blur-xl rounded-2xl shadow-lg hover:shadow-2xl transition-all duration-500 p-8 border border-white/20 transform hover:scale-[1.02] animate-in slide-in-from-bottom duration-700"
                     style={{ animationDelay: `${index * 100}ms` }}
                   >
@@ -499,11 +514,11 @@ const QuestionContribute = () => {
                             {question.company}
                           </span>
                           <span className="bg-gradient-to-r from-green-100 to-green-50 text-green-800 px-4 py-2 rounded-full text-sm font-semibold shadow-sm">
-                            {question.round}
+                            {question.category}
                           </span>
                           <span className="bg-gradient-to-r from-purple-100 to-purple-50 text-purple-800 px-4 py-2 rounded-full text-sm font-semibold flex items-center gap-2 shadow-sm">
                             <FileText size={16} />
-                            {question.type.toUpperCase()}
+                            {question.type?.toUpperCase()}
                           </span>
                         </div>
 
@@ -514,27 +529,29 @@ const QuestionContribute = () => {
                                 <FileText className="text-red-600" size={28} />
                               </div>
                               <div>
-                                <p className="font-semibold text-gray-800 text-lg">{question.content}</p>
-                                <p className="text-gray-600">File: {question.fileName}</p>
+                                <p className="font-semibold text-gray-800 text-lg">{question.title}</p>
+                                <p className="text-gray-600">File: {question.pdfName}</p>
                               </div>
                             </div>
                           ) : (
-                            <p className="text-gray-700 leading-relaxed text-lg font-medium">{question.content}</p>
+                            <div>
+                              <p className="text-gray-700 leading-relaxed text-lg font-medium mb-2">{question.title}</p>
+                              <p className="text-gray-600 text-sm">{question.experience}</p>
+                            </div>
                           )}
                         </div>
 
                         <div className="flex flex-wrap items-center gap-6 text-sm text-gray-500">
                           <div className="flex items-center gap-2">
-                            <Users size={16} />
-                            <span className="font-medium">By {question.name}</span>
+                            <span className="font-medium">Difficulty: {question.difficulty}</span>
                           </div>
                           <div className="flex items-center gap-2">
                             <Calendar size={16} />
-                            <span>{formatDate(question.createdAt)}</span>
+                            <span>{formatDate(question.lastUpdated)}</span>
                           </div>
                           <div className="flex items-center gap-2">
                             <Eye size={16} />
-                            <span className="font-medium">{question.views} views</span>
+                            <span className="font-medium">{question.views || 0} views</span>
                           </div>
                         </div>
                       </div>
@@ -561,7 +578,7 @@ const QuestionContribute = () => {
                   </div>
                 ))}
 
-                {questions.length === 0 && (
+                {(!questions || questions.length === 0) && (
                   <div className="text-center py-20 animate-in fade-in duration-1000">
                     <div className="relative mb-8">
                       <div className="p-6 bg-gradient-to-r from-blue-100 to-purple-100 rounded-full w-32 h-32 mx-auto flex items-center justify-center">
