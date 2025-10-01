@@ -16,12 +16,14 @@ import Interview from './pages/Interview.jsx'; // Assuming this is the interview
 import Uploadpage from './pages/UploadPage.jsx'; // Assuming this is the upload page
 import Ats from './pages/Ats.jsx';
 import Upload from './student/Upload.jsx'
+import PracticeQuiz from './pages/PracticeQuiz.jsx';
 import CodingPage from './pages/Coding.jsx';
 import StudentLandingpage from './Auth/StudentLandingpage.jsx'; // Assuming this is the landing page for students
 import QuestionBank from './pages/QuestionBank.jsx';
 import QuestionForum from './pages/QuestionForum.jsx'; // Assuming this is the question forum page
 import Assistant from './pages/Assistant.jsx';
 import CompanyProfileFetcher from './student/CompanyFetch.jsx';
+import Domain from './pages/Domainforum.jsx';
 // Assuming this is the question bank page
 // Assuming this is the ATS page
 // Adjusted import for clarity
@@ -77,8 +79,10 @@ function App() {
               <Route path="ats" element={<Ats />} />
               <Route path="questionforum" element={<QuestionForum/>} />
               <Route path="upload" element={<Upload />} />
+              <Route path="practicequiz" element={<PracticeQuiz />} />
               <Route path="Assistant" element={<Assistant/>}/>
-              
+              <Route path="domain" element={<Domain/>}/>
+              <Route path="companyscrap" element={<CompanyProfileFetcher/>}/>
             </Route>
 
             {/* 4. Protected Candidate Pages */}

@@ -19,6 +19,9 @@ from interview import interview_bp
 from facetrack import facetrack_bp
 from quiz import quiz_bp
 from questionbank import questionbank_bp, init_questionbank, initialize_database
+from companyscrap_bp import companyscrap_bp
+from Domainforum import domainforum_bp, init_domainforum
+from practicequiz_bp import practicequiz_bp
 
 # --- CORS & Session setup ---
 app.secret_key = os.environ.get("FLASK_SECRET_KEY", "dev-secret-key")
@@ -31,10 +34,14 @@ app.register_blueprint(interview_bp)
 app.register_blueprint(facetrack_bp)
 app.register_blueprint(quiz_bp)
 app.register_blueprint(questionbank_bp)
+app.register_blueprint(companyscrap_bp)
+app.register_blueprint(domainforum_bp)
+app.register_blueprint(practicequiz_bp)
 
 # Initialize services that require app context
 with app.app_context():
     init_questionbank(app)
+    init_domainforum(app)
     try:
         initialize_database()
     except Exception:

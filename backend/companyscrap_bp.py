@@ -1,11 +1,10 @@
 """
+Company Profile Blueprint for Flask Application
 Enhanced Company Profile Backend Server
 Workflow: User Input → Gemini (find full name) → Wikipedia → Content extraction → Gemini summarization → Frontend
 """
 
-import http.server
-import socketserver
-import json
+from flask import Blueprint, request, jsonify
 import os
 import re
 import wikipedia
@@ -13,10 +12,13 @@ import requests
 from bs4 import BeautifulSoup
 import google.generativeai as genai
 
+# Blueprint for Company Scrap
+companyscrap_bp = Blueprint('companyscrap', __name__, url_prefix='/companyscrap')
+
 # --- Gemini API Configuration ---
 # Securely get the API key from environment variables.
 # Get your free key from Google AI Studio: https://aistudio.google.com/app/apikey
-GEMINI_API_KEY = "AIzaSyAMHofGFNDtR1FIwVNooqsCRcnxW15MDUQ"
+GEMINI_API_KEY = os.getenv("GEMINI_API_KEY", "AIzaSyAMHofGFNDtR1FIwVNooqsCRcnxW15MDUQ")
 
 # --- Global Configuration ---
 HEADERS = {
@@ -26,7 +28,7 @@ HEADERS = {
 def call_gemini_model(prompt, max_tokens=250, temperature=0.8):
     """Generic function to call the Gemini model."""
     if not GEMINI_API_KEY:
-        print("Gemini API key not configured. Set GOOGLE_API_KEY environment variable. Skipping model call.")
+        print("Gemini API key not configured. Set GEMINI_API_KEY environment variable. Skipping model call.")
         return "AI model not available. API key is missing."
 
     try:
@@ -194,78 +196,50 @@ def process_company_profile(user_input):
         profile["vision"] = f"An error occurred while processing '{user_input}'. Please try again."
     return profile
 
-# --- HTTP Server Class (No changes needed here) ---
-class CompanyProfileHandler(http.server.SimpleHTTPRequestHandler):
-    def do_OPTIONS(self):
-        self.send_response(200)
-        self.send_header('Access-Control-Allow-Origin', '*')
-        self.send_header('Access-Control-Allow-Methods', 'POST, OPTIONS')
-        self.send_header('Access-Control-Allow-Headers', 'Content-Type')
-        self.end_headers()
+# --- API Routes ---
 
-    def do_POST(self):
-        if self.path == '/api/company-profile':
-            try:
-                content_length = int(self.headers['Content-Length'])
-                post_data = self.rfile.read(content_length)
-                request_data = json.loads(post_data.decode('utf-8'))
-                company_input = request_data.get('company_name', '').strip()
-                
-                if not company_input:
-                    self.send_response(400, "Bad Request")
-                    self.send_header('Content-type', 'application/json'); self.send_header('Access-Control-Allow-Origin', '*'); self.end_headers()
-                    self.wfile.write(json.dumps({"error": "Company name is required"}).encode())
-                    return
-                
-                profile = process_company_profile(company_input)
-                
-                self.send_response(200)
-                self.send_header('Content-type', 'application/json'); self.send_header('Access-Control-Allow-Origin', '*'); self.end_headers()
-                self.wfile.write(json.dumps({"success": True, "data": profile}, ensure_ascii=False).encode('utf-8'))
-            except Exception as e:
-                print(f"Error processing POST request: {e}")
-                self.send_response(500)
-                self.send_header('Content-type', 'application/json'); self.send_header('Access-Control-Allow-Origin', '*'); self.end_headers()
-                self.wfile.write(json.dumps({"success": False, "error": str(e)}).encode())
-        else:
-            self.send_response(404); self.end_headers()
-
-    def do_GET(self):
-        if self.path == '/':
-            self.send_response(200)
-            self.send_header('Content-type', 'text/html'); self.end_headers()
-            html = """
-            <!DOCTYPE html><html><head><title>Company Profile API</title>
-            <style>body{font-family:-apple-system,BlinkMacSystemFont,Segoe UI,Roboto,Helvetica,Arial,sans-serif;margin:40px;background:#f9f9f9;color:#333}h1,h2,h3{color:#1a1a1a}div{background:white;padding:20px;border-radius:8px;box-shadow:0 2px 4px rgba(0,0,0,0.1);margin:20px 0}.step{margin:10px 0;padding:10px;background:#eef;border-left:4px solid #4a90e2;border-radius:4px}.warning{color:#c0392b;background:#fbeae5;padding:15px;border-radius:4px;border-left:4px solid #c0392b}code{background:#eee;padding:2px 6px;border-radius:4px}</style>
-            </head><body>
-            <h1>Company Profile Backend API (Powered by Gemini)</h1><p>Server is running on port 8000.</p>
-            <div><h2>Processing Workflow:</h2>
-            <div class="step">1. User Input → <b>Gemini</b> finds full company name</div>
-            <div class="step">2. Extract content from Wikipedia</div>
-            <div class="step">3. Extract topic-specific text from Wikipedia content</div>
-            <div class="step">4. <b>Gemini</b> summarizes each topic (Vision, Mission, Founder, HQ, etc.)</div>
-            <div class="step">5. Structured JSON response sent to frontend</div></div>
-            <h3>API Usage:</h3><p>POST to <code>/api/company-profile</code> with JSON: <code>{"company_name": "Your Company"}</code></p>
-            <div class="warning"><b>Action Required:</b> This server uses the Google Gemini API. For full functionality, you must set an environment variable with your API key. Get a free key at <a href="https://aistudio.google.com/app/apikey">Google AI Studio</a>, then set the <code>GOOGLE_API_KEY</code> environment variable.</div>
-            </body></html>
-            """
-            self.wfile.write(html.encode())
-        else:
-            self.send_response(404); self.end_headers()
-
-def run_server(port=8000):
-    print("=" * 60); print("COMPANY PROFILE BACKEND SERVER (GEMINI EDITION)"); print("=" * 60)
-    if not GEMINI_API_KEY:
-        print("\n⚠️  WARNING: Google Gemini API key not configured!")
-        print("   To enable all features, get a free key from Google AI Studio and set the GOOGLE_API_KEY environment variable.")
-    else:
-        print("\n✅ Google Gemini API key configured successfully.")
+@companyscrap_bp.route('/api/company-profile', methods=['POST'])
+def company_profile():
+    """Main endpoint to get company profile information"""
     try:
-        with socketserver.TCPServer(("", port), CompanyProfileHandler) as httpd:
-            print(f"\n🚀 Server running at: http://localhost:{port}"); print(f"📡 API endpoint: POST /api/company-profile"); print("\nPress Ctrl+C to stop the server"); print("=" * 60)
-            httpd.serve_forever()
-    except OSError as e: print(f"\n❌ Error starting server: {e}. Is port {port} already in use?")
-    except KeyboardInterrupt: print("\n\n⏹️  Server stopped by user.")
+        data = request.get_json()
+        company_input = data.get('company_name', '').strip()
+        
+        if not company_input:
+            return jsonify({"error": "Company name is required"}), 400
+        
+        profile = process_company_profile(company_input)
+        
+        return jsonify({"success": True, "data": profile}), 200
+    except Exception as e:
+        print(f"Error processing POST request: {e}")
+        return jsonify({"success": False, "error": str(e)}), 500
 
-if __name__ == "__main__":
-    run_server(8000)
+@companyscrap_bp.route('/health', methods=['GET'])
+def health_check():
+    """Health check endpoint"""
+    return jsonify({
+        'status': 'healthy',
+        'message': 'Company Scrap service is running',
+        'gemini_configured': bool(GEMINI_API_KEY)
+    }), 200
+
+@companyscrap_bp.route('/', methods=['GET'])
+def index():
+    """Index page with API documentation"""
+    return jsonify({
+        'service': 'Company Profile API',
+        'version': '1.0.0',
+        'endpoints': {
+            'POST /api/company-profile': 'Get company profile information',
+            'GET /health': 'Health check',
+            'GET /': 'This documentation'
+        },
+        'workflow': [
+            'User Input → Gemini (find full name)',
+            'Extract content from Wikipedia',
+            'Extract topic-specific text from Wikipedia content',
+            'Gemini summarizes each topic (Vision, Mission, Founder, HQ, etc.)',
+            'Structured JSON response sent to frontend'
+        ]
+    }), 200

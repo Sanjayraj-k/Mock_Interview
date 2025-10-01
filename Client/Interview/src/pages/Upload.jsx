@@ -32,33 +32,21 @@ const Quiz = () => {
 
   // Fetch questions from API
   const fetchQuestions = async () => {
-    if (sourceType === 'pdf') {
-      if (!file) {
-        setError('Please upload a PDF file first!');
-        return;
-      }
-    } else if (sourceType === 'youtube') {
-      if (!youtubeUrl.trim()) {
-        setError('Please enter a YouTube URL!');
-        return;
-      }
+    if (!file) {
+      setError('Please upload a PDF file first!');
+      return;
     }
 
     setLoading(true);
     setError(null);
 
     const formData = new FormData();
+    formData.append('file', file);
     formData.append('difficulty', difficulty);
     formData.append('num_questions', numQuestions);
-    formData.append('source_type', sourceType);
-    if (sourceType === 'pdf') {
-      formData.append('file', file);
-    } else if (sourceType === 'youtube') {
-      formData.append('youtube_url', youtubeUrl);
-    }
 
     try {
-      const response = await fetch('http://localhost:5000/quiz/generate-quiz', {
+      const response = await fetch('http://localhost:5000/api/generate-quiz', {
         method: 'POST',
         body: formData,
       });
@@ -72,7 +60,6 @@ const Quiz = () => {
         setQuestions(data.quiz);
         setShowAnswers(data.quiz.reduce((acc, _, index) => ({ ...acc, [index]: false }), {}));
         setFile(null); // Clear file after successful submission
-        setYoutubeUrl('');
       } else {
         throw new Error('Invalid quiz format received from the server.');
       }
@@ -97,67 +84,38 @@ const Quiz = () => {
         </div>
 
         <div className="p-8">
-          {/* Source Type Toggle */}
-          <div className="flex gap-3 mb-6">
-            <button
-              className={`px-4 py-2 rounded-full font-medium transition-all ${sourceType === 'pdf' ? 'bg-indigo-600 text-white' : 'bg-gray-100 text-gray-700'}`}
-              onClick={() => { setSourceType('pdf'); setError(null); }}
-            >
-              Document (PDF)
-            </button>
-            <button
-              className={`px-4 py-2 rounded-full font-medium transition-all ${sourceType === 'youtube' ? 'bg-red-500 text-white' : 'bg-gray-100 text-gray-700'}`}
-              onClick={() => { setSourceType('youtube'); setFile(null); setError(null); }}
-            >
-              YouTube Video
-            </button>
+          {/* File Upload Section */}
+          <div
+            {...getRootProps()}
+            className={`border-2 border-dashed rounded-lg p-8 mb-6 text-center cursor-pointer transition-all ${
+              isDragActive ? 'border-blue-500 bg-blue-50' : 'border-gray-300 hover:border-blue-400 hover:bg-blue-50'
+            }`}
+          >
+            <input {...getInputProps()} />
+            <div className="flex flex-col items-center">
+              <svg
+                className="w-8 h-6 mb-2 text-indigo-500"
+                fill="none"
+                stroke="currentColor"
+                viewBox="0 0 24 24"
+                xmlns="http://www.w3.org/2000/svg"
+              >
+                <path
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  strokeWidth="2"
+                  d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12"
+                />
+              </svg>
+              {isDragActive ? (
+                <p className="text-blue-500 font-medium">Drop the PDF file here...</p>
+              ) : (
+                <p className="text-gray-500">Drag & drop a PDF document here, or click to select one</p>
+              )}
+            </div>
           </div>
 
-          {/* File Upload Section */}
-          {sourceType === 'pdf' ? (
-            <div
-              {...getRootProps()}
-              className={`border-2 border-dashed rounded-lg p-8 mb-6 text-center cursor-pointer transition-all ${
-                isDragActive ? 'border-blue-500 bg-blue-50' : 'border-gray-300 hover:border-blue-400 hover:bg-blue-50'
-              }`}
-            >
-              <input {...getInputProps()} />
-              <div className="flex flex-col items-center">
-                <svg
-                  className="w-8 h-6 mb-2 text-indigo-500"
-                  fill="none"
-                  stroke="currentColor"
-                  viewBox="0 0 24 24"
-                  xmlns="http://www.w3.org/2000/svg"
-                >
-                  <path
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                    strokeWidth="2"
-                    d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12"
-                  />
-                </svg>
-                {isDragActive ? (
-                  <p className="text-blue-500 font-medium">Drop the PDF file here...</p>
-                ) : (
-                  <p className="text-gray-500">Drag & drop a PDF document here, or click to select one</p>
-                )}
-              </div>
-            </div>
-          ) : (
-            <div className="mb-6">
-              <label className="block text-gray-700 font-medium mb-2">YouTube Video URL:</label>
-              <input
-                type="text"
-                value={youtubeUrl}
-                onChange={(e) => setYoutubeUrl(e.target.value)}
-                placeholder="Enter YouTube URL (e.g., https://www.youtube.com/watch?v=...)"
-                className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-red-500"
-              />
-            </div>
-          )}
-
-          {sourceType === 'pdf' && file && (
+          {file && (
             <div className="mb-6 p-3 bg-green-50 border border-green-200 rounded-lg flex items-center">
               <svg
                 className="w-5 h-5 text-green-500 mr-2"
