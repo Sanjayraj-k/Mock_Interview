@@ -1,7 +1,7 @@
 // src/Dashboard/Hr.jsx
 
 import React, { useState, useEffect, useContext } from 'react';
-import { User, Plus, Calendar, Settings, Eye, Trash2, Edit3, Users, X, Award, Clock, Mail, User as UserIcon } from 'lucide-react';
+import { User, Plus, Calendar, Settings, Eye, Trash2, Edit3, Users, X, Award, Clock, Mail, User as UserIcon, Upload, Download, FileSpreadsheet } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { AuthContext } from '../context/AuthContext'; // Ensure this path is correct
 
@@ -18,6 +18,11 @@ export default function HRDashboard() {
   const [selectedRole, setSelectedRole] = useState(null);
   const [testResults, setTestResults] = useState([]);
   const [loadingResults, setLoadingResults] = useState(false);
+  const [showMultiStudentForm, setShowMultiStudentForm] = useState(false);
+  const [excelFile, setExcelFile] = useState(null);
+  const [bulkStudents, setBulkStudents] = useState([]);
+  const [bulkPassword, setBulkPassword] = useState('');
+  const [bulkRole, setBulkRole] = useState('');
 
   // State for data fetched from the backend
   const [roles, setRoles] = useState([]);
@@ -165,6 +170,121 @@ export default function HRDashboard() {
     setTestResults([]);
   };
 
+  // Handler to download Excel template
+  const handleDownloadTemplate = () => {
+    const templateData = [
+      ['Name', 'Email', 'Roll Number'],
+      ['John Doe', 'john.doe@example.com', '20BCE1234'],
+      ['Jane Smith', 'jane.smith@example.com', '20BCE5678'],
+      ['Mike Johnson', 'mike.johnson@example.com', '20BCE9012']
+    ];
+
+    const csvContent = templateData.map(row => row.join(',')).join('\n');
+    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+    const link = document.createElement('a');
+    const url = URL.createObjectURL(blob);
+    link.setAttribute('href', url);
+    link.setAttribute('download', 'student_template.csv');
+    link.style.visibility = 'hidden';
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+  };
+
+  // Handler to process uploaded Excel file
+  const handleFileUpload = (event) => {
+    const file = event.target.files[0];
+    if (!file) return;
+
+    setExcelFile(file);
+    
+    const reader = new FileReader();
+    reader.onload = (e) => {
+      const text = e.target.result;
+      const lines = text.split('\n').filter(line => line.trim());
+      const headers = lines[0].split(',').map(h => h.trim());
+      
+      // Validate headers
+      const requiredHeaders = ['Name', 'Email', 'Roll Number'];
+      const hasValidHeaders = requiredHeaders.every(header => 
+        headers.some(h => h.toLowerCase().includes(header.toLowerCase()))
+      );
+
+      if (!hasValidHeaders) {
+        setError('Invalid file format. Please use the provided template.');
+        return;
+      }
+
+      // Parse data
+      const students = [];
+      for (let i = 1; i < lines.length; i++) {
+        const values = lines[i].split(',').map(v => v.trim());
+        if (values.length >= 3 && values[0] && values[1] && values[2]) {
+          students.push({
+            name: values[0],
+            email: values[1],
+            rollNo: values[2]
+          });
+        }
+      }
+
+      setBulkStudents(students);
+      setError('');
+    };
+    reader.readAsText(file);
+  };
+
+  // Handler to create multiple students
+  const handleBulkCreateStudents = async (e) => {
+    e.preventDefault();
+    if (!hrData?.email) {
+      setError("Cannot create students: User identity not found.");
+      return;
+    }
+    if (!bulkPassword || !bulkRole) {
+      setError("Please provide password and role for all students.");
+      return;
+    }
+    if (bulkStudents.length === 0) {
+      setError("No students to create.");
+      return;
+    }
+
+    try {
+      setError('');
+      const response = await fetch('http://localhost:5000/api/students/bulk', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ 
+          students: bulkStudents,
+          password: bulkPassword,
+          role: bulkRole,
+          hrEmail: hrData.email 
+        })
+      });
+      
+      if (!response.ok) {
+        const errData = await response.json();
+        throw new Error(errData.error || 'Failed to create students');
+      }
+      
+      const result = await response.json();
+      setStudents([...students, ...result.createdStudents]);
+      setBulkStudents([]);
+      setBulkPassword('');
+      setBulkRole('');
+      setExcelFile(null);
+      setShowMultiStudentForm(false);
+      
+      // Reset file input
+      const fileInput = document.getElementById('excel-file');
+      if (fileInput) fileInput.value = '';
+      
+    } catch (err) {
+      setError(err.message);
+    }
+  };
+
   // --- RENDER ---
 
   const SidebarButton = ({ tabName, icon, children }) => (
@@ -242,7 +362,26 @@ export default function HRDashboard() {
               handleViewResults={handleViewResults}
             />
           )}
-          {activeTab === 'students' && <StudentsContent students={students} roles={roles} newStudent={newStudent} setNewStudent={setNewStudent} handleAddStudent={handleAddStudent} />}
+          {activeTab === 'students' && (
+            <StudentsContent 
+              students={students} 
+              roles={roles} 
+              newStudent={newStudent} 
+              setNewStudent={setNewStudent} 
+              handleAddStudent={handleAddStudent}
+              showMultiStudentForm={showMultiStudentForm}
+              setShowMultiStudentForm={setShowMultiStudentForm}
+              handleDownloadTemplate={handleDownloadTemplate}
+              handleFileUpload={handleFileUpload}
+              handleBulkCreateStudents={handleBulkCreateStudents}
+              excelFile={excelFile}
+              bulkStudents={bulkStudents}
+              bulkPassword={bulkPassword}
+              setBulkPassword={setBulkPassword}
+              bulkRole={bulkRole}
+              setBulkRole={setBulkRole}
+            />
+          )}
         </main>
       </div>
 
@@ -631,40 +770,171 @@ const RolesContent = ({ roles, showCreateRole, setShowCreateRole, newRole, setNe
     </div>
 );
   
-const StudentsContent = ({ students, roles, newStudent, setNewStudent, handleAddStudent }) => (
+const StudentsContent = ({ 
+  students, 
+  roles, 
+  newStudent, 
+  setNewStudent, 
+  handleAddStudent,
+  showMultiStudentForm,
+  setShowMultiStudentForm,
+  handleDownloadTemplate,
+  handleFileUpload,
+  handleBulkCreateStudents,
+  excelFile,
+  bulkStudents,
+  bulkPassword,
+  setBulkPassword,
+  bulkRole,
+  setBulkRole
+}) => (
       <div>
-          <h2 className="text-2xl font-bold text-gray-900 mb-6">Student Management</h2>
+          <div className="flex items-center justify-between mb-6">
+              <h2 className="text-2xl font-bold text-gray-900">Student Management</h2>
+              <div className="flex space-x-3">
+                  <button
+                      onClick={() => setShowMultiStudentForm(!showMultiStudentForm)}
+                      className="bg-gradient-to-r from-green-500 to-teal-600 text-white px-4 py-2 rounded-lg font-medium hover:from-green-600 hover:to-teal-700 transition-all duration-200 flex items-center space-x-2"
+                  >
+                      <FileSpreadsheet className="w-4 h-4" />
+                      <span>{showMultiStudentForm ? 'Single Student' : 'Bulk Upload'}</span>
+                  </button>
+              </div>
+          </div>
+          
           <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
               <div className="lg:col-span-1">
-                  <div className="bg-white p-6 rounded-xl shadow-sm border">
-                      <h3 className="text-lg font-semibold text-gray-900 mb-4">Add New Student</h3>
-                      <form onSubmit={handleAddStudent} className="space-y-4">
-                          <div>
-                              <label className="block text-sm font-medium text-gray-700 mb-1">Student Name</label>
-                              <input type="text" placeholder="Full Name" value={newStudent.name} onChange={(e) => setNewStudent({ ...newStudent, name: e.target.value })} className="w-full px-3 py-2 border border-gray-300 rounded-md" required />
+                  {!showMultiStudentForm ? (
+                      <div className="bg-white p-6 rounded-xl shadow-sm border">
+                          <h3 className="text-lg font-semibold text-gray-900 mb-4">Add New Student</h3>
+                          <form onSubmit={handleAddStudent} className="space-y-4">
+                              <div>
+                                  <label className="block text-sm font-medium text-gray-700 mb-1">Student Name</label>
+                                  <input type="text" placeholder="Full Name" value={newStudent.name} onChange={(e) => setNewStudent({ ...newStudent, name: e.target.value })} className="w-full px-3 py-2 border border-gray-300 rounded-md" required />
+                              </div>
+                              <div>
+                                  <label className="block text-sm font-medium text-gray-700 mb-1">Email Address</label>
+                                  <input type="email" placeholder="student@example.com" value={newStudent.email} onChange={(e) => setNewStudent({ ...newStudent, email: e.target.value })} className="w-full px-3 py-2 border border-gray-300 rounded-md" required />
+                              </div>
+                              <div>
+                                  <label className="block text-sm font-medium text-gray-700 mb-1">Roll Number</label>
+                                  <input type="text" placeholder="e.g., 20BCE1234" value={newStudent.rollNo} onChange={(e) => setNewStudent({ ...newStudent, rollNo: e.target.value })} className="w-full px-3 py-2 border border-gray-300 rounded-md" required />
+                              </div>
+                              <div>
+                                  <label className="block text-sm font-medium text-gray-700 mb-1">Assign to Role</label>
+                                  <select value={newStudent.role} onChange={(e) => setNewStudent({ ...newStudent, role: e.target.value })} className="w-full px-3 py-2 border border-gray-300 rounded-md" required>
+                                      <option value="">Select a Role</option>
+                                      {roles.map(role => <option key={role._id} value={role.title}>{role.title}</option>)}
+                                  </select>
+                              </div>
+                              <div>
+                                  <label className="block text-sm font-medium text-gray-700 mb-1">Set Password</label>
+                                  <input type="password" placeholder="Create a strong password" value={newStudent.password} onChange={(e) => setNewStudent({ ...newStudent, password: e.target.value })} className="w-full px-3 py-2 border border-gray-300 rounded-md" required />
+                              </div>
+                              <button type="submit" className="w-full bg-gradient-to-r from-blue-500 to-purple-600 text-white py-2.5 rounded-lg font-medium hover:from-blue-600 hover:to-purple-700">Add Student</button>
+                          </form>
+                      </div>
+                  ) : (
+                      <div className="bg-white p-6 rounded-xl shadow-sm border">
+                          <h3 className="text-lg font-semibold text-gray-900 mb-4">Bulk Upload Students</h3>
+                          
+                          {/* Download Template */}
+                          <div className="mb-6 p-4 bg-blue-50 rounded-lg border border-blue-200">
+                              <h4 className="text-sm font-medium text-blue-900 mb-2">Step 1: Download Template</h4>
+                              <p className="text-sm text-blue-700 mb-3">Download the Excel template and fill in student details.</p>
+                              <button
+                                  onClick={handleDownloadTemplate}
+                                  className="flex items-center space-x-2 text-blue-600 hover:text-blue-700 font-medium"
+                              >
+                                  <Download className="w-4 h-4" />
+                                  <span>Download Template</span>
+                              </button>
                           </div>
-                          <div>
-                              <label className="block text-sm font-medium text-gray-700 mb-1">Email Address</label>
-                              <input type="email" placeholder="student@example.com" value={newStudent.email} onChange={(e) => setNewStudent({ ...newStudent, email: e.target.value })} className="w-full px-3 py-2 border border-gray-300 rounded-md" required />
+
+                          {/* Upload File */}
+                          <div className="mb-6">
+                              <h4 className="text-sm font-medium text-gray-900 mb-2">Step 2: Upload Filled File</h4>
+                              <input
+                                  id="excel-file"
+                                  type="file"
+                                  accept=".csv,.xlsx,.xls"
+                                  onChange={handleFileUpload}
+                                  className="w-full px-3 py-2 border border-gray-300 rounded-md file:mr-4 file:py-2 file:px-4 file:rounded-full file:border-0 file:text-sm file:font-semibold file:bg-blue-50 file:text-blue-700 hover:file:bg-blue-100"
+                              />
+                              {excelFile && (
+                                  <p className="text-sm text-green-600 mt-2">✓ File uploaded: {excelFile.name}</p>
+                              )}
                           </div>
-                          <div>
-                              <label className="block text-sm font-medium text-gray-700 mb-1">Roll Number</label>
-                              <input type="text" placeholder="e.g., 20BCE1234" value={newStudent.rollNo} onChange={(e) => setNewStudent({ ...newStudent, rollNo: e.target.value })} className="w-full px-3 py-2 border border-gray-300 rounded-md" required />
-                          </div>
-                          <div>
-                              <label className="block text-sm font-medium text-gray-700 mb-1">Assign to Role</label>
-                              <select value={newStudent.role} onChange={(e) => setNewStudent({ ...newStudent, role: e.target.value })} className="w-full px-3 py-2 border border-gray-300 rounded-md" required>
-                                  <option value="">Select a Role</option>
-                                  {roles.map(role => <option key={role._id} value={role.title}>{role.title}</option>)}
-                              </select>
-                          </div>
-                          <div>
-                              <label className="block text-sm font-medium text-gray-700 mb-1">Set Password</label>
-                              <input type="password" placeholder="Create a strong password" value={newStudent.password} onChange={(e) => setNewStudent({ ...newStudent, password: e.target.value })} className="w-full px-3 py-2 border border-gray-300 rounded-md" required />
-                          </div>
-                          <button type="submit" className="w-full bg-gradient-to-r from-blue-500 to-purple-600 text-white py-2.5 rounded-lg font-medium hover:from-blue-600 hover:to-purple-700">Add Student</button>
-                      </form>
-                  </div>
+
+                          {/* Preview Students */}
+                          {bulkStudents.length > 0 && (
+                              <div className="mb-6">
+                                  <h4 className="text-sm font-medium text-gray-900 mb-2">Step 3: Preview Students ({bulkStudents.length} found)</h4>
+                                  <div className="max-h-40 overflow-y-auto border border-gray-200 rounded-lg">
+                                      <table className="w-full text-xs">
+                                          <thead className="bg-gray-50">
+                                              <tr>
+                                                  <th className="px-2 py-1 text-left">Name</th>
+                                                  <th className="px-2 py-1 text-left">Email</th>
+                                                  <th className="px-2 py-1 text-left">Roll No</th>
+                                              </tr>
+                                          </thead>
+                                          <tbody>
+                                              {bulkStudents.slice(0, 5).map((student, index) => (
+                                                  <tr key={index} className="border-t">
+                                                      <td className="px-2 py-1">{student.name}</td>
+                                                      <td className="px-2 py-1">{student.email}</td>
+                                                      <td className="px-2 py-1">{student.rollNo}</td>
+                                                  </tr>
+                                              ))}
+                                              {bulkStudents.length > 5 && (
+                                                  <tr className="border-t bg-gray-50">
+                                                      <td colSpan="3" className="px-2 py-1 text-center text-gray-500">
+                                                          ... and {bulkStudents.length - 5} more
+                                                      </td>
+                                                  </tr>
+                                              )}
+                                          </tbody>
+                                      </table>
+                                  </div>
+                              </div>
+                          )}
+
+                          {/* Common Settings */}
+                          <form onSubmit={handleBulkCreateStudents} className="space-y-4">
+                              <div>
+                                  <label className="block text-sm font-medium text-gray-700 mb-1">Assign to Role</label>
+                                  <select 
+                                      value={bulkRole} 
+                                      onChange={(e) => setBulkRole(e.target.value)} 
+                                      className="w-full px-3 py-2 border border-gray-300 rounded-md" 
+                                      required
+                                  >
+                                      <option value="">Select a Role</option>
+                                      {roles.map(role => <option key={role._id} value={role.title}>{role.title}</option>)}
+                                  </select>
+                              </div>
+                              <div>
+                                  <label className="block text-sm font-medium text-gray-700 mb-1">Set Password (for all students)</label>
+                                  <input 
+                                      type="password" 
+                                      placeholder="Create a strong password" 
+                                      value={bulkPassword} 
+                                      onChange={(e) => setBulkPassword(e.target.value)} 
+                                      className="w-full px-3 py-2 border border-gray-300 rounded-md" 
+                                      required 
+                                  />
+                              </div>
+                              <button 
+                                  type="submit" 
+                                  disabled={bulkStudents.length === 0}
+                                  className="w-full bg-gradient-to-r from-green-500 to-teal-600 text-white py-2.5 rounded-lg font-medium hover:from-green-600 hover:to-teal-700 disabled:opacity-50 disabled:cursor-not-allowed"
+                              >
+                                  Create {bulkStudents.length} Students
+                              </button>
+                          </form>
+                      </div>
+                  )}
               </div>
               <div className="lg:col-span-2">
                   <div className="bg-white rounded-xl shadow-sm border overflow-hidden">

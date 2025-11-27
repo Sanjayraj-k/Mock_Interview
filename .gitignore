@@ -1,4 +1,7 @@
 backend/env
 Client/Interview/node_modules/  
 backend/node_modules/
+backend/site-packages/
+backend/temp
 backend/mockvenv
+

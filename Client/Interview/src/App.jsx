@@ -24,6 +24,7 @@ import QuestionForum from './pages/QuestionForum.jsx'; // Assuming this is the q
 import Assistant from './pages/Assistant.jsx';
 import CompanyProfileFetcher from './student/CompanyFetch.jsx';
 import Domain from './pages/Domainforum.jsx';
+import Int from './pages/int.jsx';
 // Assuming this is the question bank page
 // Assuming this is the ATS page
 // Adjusted import for clarity
@@ -152,6 +153,7 @@ function App() {
               </ProtectedCandidateRoute>
               
             }/>
+            <Route path="/int" element={<Int/>} />
             
             {/* 5. Fallback Route - Redirects any unknown URL to the landing page */}
             <Route path="*" element={<Navigate to="/" replace />} />

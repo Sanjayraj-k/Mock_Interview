@@ -261,6 +261,78 @@ def create_student():
     except Exception as e:
         app.logger.error(f"Create student error: {e}")
         return jsonify({"error": "An internal server error occurred"}), 500
+
+@app.route('/api/students/bulk', methods=['POST'])
+def create_students_bulk():
+    """Creates multiple students with the same password and role."""
+    try:
+        data = request.get_json()
+        hr_email = data.get("hrEmail")
+        students_data = data.get("students", [])
+        password = data.get("password")
+        role = data.get("role")
+
+        if not hr_email:
+            return jsonify({"error": "hrEmail is required"}), 400
+        
+        if not password or not role:
+            return jsonify({"error": "Password and role are required for all students"}), 400
+        
+        if not students_data or len(students_data) == 0:
+            return jsonify({"error": "No students data provided"}), 400
+
+        # Validate all students have required fields
+        for i, student in enumerate(students_data):
+            if not all(field in student for field in ["name", "email", "rollNo"]):
+                return jsonify({"error": f"Student {i+1} is missing required fields (name, email, rollNo)"}), 400
+
+        # Check for duplicate emails in the batch
+        emails = [student["email"] for student in students_data]
+        if len(emails) != len(set(emails)):
+            return jsonify({"error": "Duplicate emails found in the uploaded data"}), 400
+
+        # Check for existing students in database
+        existing_students = list(db.students.find({"email": {"$in": emails}}, {"email": 1}))
+        if existing_students:
+            existing_emails = [student["email"] for student in existing_students]
+            return jsonify({"error": f"Students with these emails already exist: {', '.join(existing_emails)}"}), 409
+
+        # Hash password once for all students
+        hashed_password = bcrypt.hashpw(password.encode('utf-8'), bcrypt.gensalt()).decode('utf-8')
+
+        # Prepare students for insertion
+        students_to_insert = []
+        for student in students_data:
+            student_doc = {
+                "hrEmail": hr_email,
+                "name": student["name"],
+                "email": student["email"],
+                "rollNo": student["rollNo"],
+                "role": role,
+                "password": hashed_password,
+                "status": "Eligible",
+                "createdAt": datetime.utcnow()
+            }
+            students_to_insert.append(student_doc)
+
+        # Insert all students
+        result = db.students.insert_many(students_to_insert)
+        
+        # Prepare response (without passwords)
+        created_students = []
+        for i, student_doc in enumerate(students_to_insert):
+            student_doc['_id'] = str(result.inserted_ids[i])
+            del student_doc['password']
+            created_students.append(student_doc)
+
+        return jsonify({
+            "message": f"Successfully created {len(created_students)} students",
+            "createdStudents": created_students
+        }), 201
+
+    except Exception as e:
+        app.logger.error(f"Bulk create students error: {e}")
+        return jsonify({"error": "An internal server error occurred"}), 500
     
 @app.route('/api/get-random-questions', methods=['GET'])
 def get_random_questions():
