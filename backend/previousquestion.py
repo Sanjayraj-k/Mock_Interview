@@ -5,6 +5,7 @@ client = Groq(api_key="**********")
 completion = client.chat.completions.create(
     model="groq/compound",
     messages=[
+        {"role": "user", "content": "2024 aptitude question asked by accenture"},
         {"role": "assistant", "content": ""},
         {"role": "user", "content": ""}
     ],
