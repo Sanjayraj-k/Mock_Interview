@@ -67,23 +67,23 @@ function App() {
                 }
               />
             </Route>
-            <Route path="scrap" element={<CompanyProfileFetcher/>} />
+            <Route path="scrap" element={<CompanyProfileFetcher />} />
             {/* 3. Candidate Route */}
             <Route path="/candidate">
               <Route index element={<Navigate to="/candidate/login" replace />} />
               <Route path="login" element={<StudentLogin />} />
             </Route>
             <Route path="/student">
-              
-              <Route path="landing" element={<StudentLandingpage/>} />
-              <Route path="questionBank" element={<QuestionBank/>}/>
+
+              <Route path="landing" element={<StudentLandingpage />} />
+              <Route path="questionBank" element={<QuestionBank />} />
               <Route path="ats" element={<Ats />} />
-              <Route path="questionforum" element={<QuestionForum/>} />
+              <Route path="questionforum" element={<QuestionForum />} />
               <Route path="upload" element={<Upload />} />
               <Route path="practicequiz" element={<PracticeQuiz />} />
-              <Route path="Assistant" element={<Assistant/>}/>
-              <Route path="domain" element={<Domain/>}/>
-              <Route path="companyscrap" element={<CompanyProfileFetcher/>}/>
+              <Route path="Assistant" element={<Assistant />} />
+              <Route path="domain" element={<Domain />} />
+              <Route path="companyscrap" element={<CompanyProfileFetcher />} />
             </Route>
 
             {/* 4. Protected Candidate Pages */}
@@ -136,25 +136,25 @@ function App() {
                 </ProtectedCandidateRoute>
               }
             />
-             <Route path="/round1" element={
+            <Route path="/round1" element={
               <ProtectedCandidateRoute>
-              <Round1/>
+                <Round1 />
               </ProtectedCandidateRoute>
-            }/>
+            } />
             <Route path="/coding" element={
               <ProtectedCandidateRoute>
-              <CodingPage/>
+                <CodingPage />
               </ProtectedCandidateRoute>
-            }/>
-            
+            } />
+
             <Route path="/interview" element={
               <ProtectedCandidateRoute>
-              <Interview/>
+                <Interview />
               </ProtectedCandidateRoute>
-              
-            }/>
-            <Route path="/int" element={<Int/>} />
-            
+
+            } />
+            <Route path="/int" element={<Int />} />
+
             {/* 5. Fallback Route - Redirects any unknown URL to the landing page */}
             <Route path="*" element={<Navigate to="/" replace />} />
           </Routes>

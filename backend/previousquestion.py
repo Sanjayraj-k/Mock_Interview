@@ -1,6 +1,6 @@
 from groq import Groq
 
-client = Groq(api_key="**********")
+client = Groq(api_key="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")
 
 completion = client.chat.completions.create(
     model="groq/compound",

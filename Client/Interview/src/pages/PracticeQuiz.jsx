@@ -48,12 +48,12 @@ const UploadPage = () => {
             alert("Please upload a document or audio file first!");
             return;
         }
-        
+
         if (!className.trim()) {
             alert("Please enter the class name!");
             return;
         }
-        
+
         if (!year || isNaN(year) || year.length !== 4) {
             alert("Please enter a valid 4-digit year!");
             return;
@@ -69,7 +69,7 @@ const UploadPage = () => {
             formData.append("file", file);
             formData.append("content_type", contentType);
         }
-        
+
         formData.append("difficulty", difficulty);
         formData.append("num_questions", numQuestions);
         formData.append("class_name", className);
@@ -159,11 +159,11 @@ const UploadPage = () => {
                             Practice Quiz - Question {currentQuestion + 1} of {quiz.length}
                         </h2>
                     </div>
-                    
+
                     <div className="p-8">
                         <div className="mb-6">
                             <div className="w-full bg-gray-200 rounded-full h-2 mb-4">
-                                <div 
+                                <div
                                     className="bg-gradient-to-r from-indigo-500 to-purple-500 h-2 rounded-full transition-all duration-300"
                                     style={{ width: `${((currentQuestion + 1) / quiz.length) * 100}%` }}
                                 ></div>
@@ -174,16 +174,15 @@ const UploadPage = () => {
                             <h3 className="text-xl font-semibold text-gray-800 mb-6">
                                 {currentQ.question}
                             </h3>
-                            
+
                             <div className="space-y-3">
                                 {currentQ.options.map((option, index) => (
-                                    <label 
+                                    <label
                                         key={index}
-                                        className={`block p-4 border-2 rounded-lg cursor-pointer transition-all ${
-                                            selectedAnswers[currentQuestion] === option
+                                        className={`block p-4 border-2 rounded-lg cursor-pointer transition-all ${selectedAnswers[currentQuestion] === option
                                                 ? 'border-indigo-500 bg-indigo-50'
                                                 : 'border-gray-200 hover:border-gray-300'
-                                        }`}
+                                            }`}
                                     >
                                         <input
                                             type="radio"
@@ -203,15 +202,14 @@ const UploadPage = () => {
                             <button
                                 onClick={handlePreviousQuestion}
                                 disabled={currentQuestion === 0}
-                                className={`px-6 py-2 rounded-lg font-medium transition-all ${
-                                    currentQuestion === 0
+                                className={`px-6 py-2 rounded-lg font-medium transition-all ${currentQuestion === 0
                                         ? 'bg-gray-300 text-gray-500 cursor-not-allowed'
                                         : 'bg-gray-500 text-white hover:bg-gray-600'
-                                }`}
+                                    }`}
                             >
                                 Previous
                             </button>
-                            
+
                             {currentQuestion === quiz.length - 1 ? (
                                 <button
                                     onClick={handleSubmitQuiz}
@@ -244,7 +242,7 @@ const UploadPage = () => {
                             Quiz Results
                         </h2>
                     </div>
-                    
+
                     <div className="p-8">
                         <div className="text-center mb-8">
                             <div className="text-6xl font-bold text-gray-800 mb-2">
@@ -253,12 +251,11 @@ const UploadPage = () => {
                             <div className="text-xl text-gray-600 mb-4">
                                 {Math.round((score / quiz.length) * 100)}% Correct
                             </div>
-                            <div className={`text-lg font-semibold ${
-                                score === quiz.length ? 'text-green-600' : 
-                                score >= quiz.length * 0.7 ? 'text-blue-600' : 'text-red-600'
-                            }`}>
-                                {score === quiz.length ? 'Perfect! 🎉' : 
-                                 score >= quiz.length * 0.7 ? 'Good Job! 👍' : 'Keep Practicing! 💪'}
+                            <div className={`text-lg font-semibold ${score === quiz.length ? 'text-green-600' :
+                                    score >= quiz.length * 0.7 ? 'text-blue-600' : 'text-red-600'
+                                }`}>
+                                {score === quiz.length ? 'Perfect! 🎉' :
+                                    score >= quiz.length * 0.7 ? 'Good Job! 👍' : 'Keep Practicing! 💪'}
                             </div>
                         </div>
 
@@ -268,26 +265,24 @@ const UploadPage = () => {
                                     <h3 className="text-lg font-semibold text-gray-800 mb-4">
                                         Question {index + 1}: {question.question}
                                     </h3>
-                                    
+
                                     <div className="space-y-2 mb-4">
                                         {question.options.map((option, optIndex) => (
-                                            <div 
+                                            <div
                                                 key={optIndex}
-                                                className={`p-3 rounded-lg ${
-                                                    option === question.correct_answer
+                                                className={`p-3 rounded-lg ${option === question.correct_answer
                                                         ? 'bg-green-100 border-2 border-green-500'
                                                         : option === selectedAnswers[index] && option !== question.correct_answer
-                                                        ? 'bg-red-100 border-2 border-red-500'
-                                                        : 'bg-gray-50 border border-gray-200'
-                                                }`}
+                                                            ? 'bg-red-100 border-2 border-red-500'
+                                                            : 'bg-gray-50 border border-gray-200'
+                                                    }`}
                                             >
-                                                <span className={`font-medium ${
-                                                    option === question.correct_answer
+                                                <span className={`font-medium ${option === question.correct_answer
                                                         ? 'text-green-800'
                                                         : option === selectedAnswers[index] && option !== question.correct_answer
-                                                        ? 'text-red-800'
-                                                        : 'text-gray-700'
-                                                }`}>
+                                                            ? 'text-red-800'
+                                                            : 'text-gray-700'
+                                                    }`}>
                                                     {option}
                                                     {option === question.correct_answer && ' ✓'}
                                                     {option === selectedAnswers[index] && option !== question.correct_answer && ' ✗'}
@@ -295,7 +290,7 @@ const UploadPage = () => {
                                             </div>
                                         ))}
                                     </div>
-                                    
+
                                     <div className="bg-blue-50 border-l-4 border-blue-400 p-4">
                                         <p className="text-blue-800">
                                             <strong>Explanation:</strong> {question.explanation}
@@ -328,35 +323,32 @@ const UploadPage = () => {
                         Upload Content to Generate a Quiz
                     </h2>
                 </div>
-                
+
                 <div className="p-8">
                     <div className="flex flex-wrap gap-2 mb-6">
-                        <button 
-                            className={`px-4 py-2 rounded-full font-medium transition-all duration-200 ${
-                                contentType === "pdf" 
-                                    ? "bg-indigo-600 text-white shadow-md" 
+                        <button
+                            className={`px-4 py-2 rounded-full font-medium transition-all duration-200 ${contentType === "pdf"
+                                    ? "bg-indigo-600 text-white shadow-md"
                                     : "bg-gray-100 text-gray-700 hover:bg-gray-200"
-                            }`}
+                                }`}
                             onClick={() => handleContentTypeChange("pdf")}
                         >
                             Document
                         </button>
-                        <button 
-                            className={`px-4 py-2 rounded-full font-medium transition-all duration-200 ${
-                                contentType === "youtube" 
-                                    ? "bg-red-500 text-white shadow-md" 
+                        <button
+                            className={`px-4 py-2 rounded-full font-medium transition-all duration-200 ${contentType === "youtube"
+                                    ? "bg-red-500 text-white shadow-md"
                                     : "bg-gray-100 text-gray-700 hover:bg-gray-200"
-                            }`}
+                                }`}
                             onClick={() => handleContentTypeChange("youtube")}
                         >
                             YouTube Video
                         </button>
-                        <button 
-                            className={`px-4 py-2 rounded-full font-medium transition-all duration-200 ${
-                                contentType === "audio" 
-                                    ? "bg-green-500 text-white shadow-md" 
+                        <button
+                            className={`px-4 py-2 rounded-full font-medium transition-all duration-200 ${contentType === "audio"
+                                    ? "bg-green-500 text-white shadow-md"
                                     : "bg-gray-100 text-gray-700 hover:bg-gray-200"
-                            }`}
+                                }`}
                             onClick={() => handleContentTypeChange("audio")}
                         >
                             Audio File
@@ -376,36 +368,35 @@ const UploadPage = () => {
                         </div>
                     ) : (
                         <>
-                            <div 
-                                {...getRootProps()} 
-                                className={`border-2 border-dashed rounded-lg p-8 mb-4 text-center cursor-pointer transition-all ${
-                                    isDragActive 
-                                        ? "border-blue-500 bg-blue-50" 
+                            <div
+                                {...getRootProps()}
+                                className={`border-2 border-dashed rounded-lg p-8 mb-4 text-center cursor-pointer transition-all ${isDragActive
+                                        ? "border-blue-500 bg-blue-50"
                                         : "border-gray-300 hover:border-blue-400 hover:bg-blue-50"
-                                }`}
+                                    }`}
                             >
                                 <input {...getInputProps()} />
                                 <div className="flex flex-col items-center">
-                                <svg 
-    className={`w-8 h-6 mb-2 ${contentType === "pdf" ? "text-indigo-500" : "text-green-500"}`} 
-    fill="none" 
-    stroke="currentColor" 
-    viewBox="0 0 24 24" 
-    xmlns="http://www.w3.org/2000/svg"
->
-    <path 
-        strokeLinecap="round" 
-        strokeLinejoin="round" 
-        strokeWidth="2" 
-        d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12"
-    />
-</svg>
+                                    <svg
+                                        className={`w-8 h-6 mb-2 ${contentType === "pdf" ? "text-indigo-500" : "text-green-500"}`}
+                                        fill="none"
+                                        stroke="currentColor"
+                                        viewBox="0 0 24 24"
+                                        xmlns="http://www.w3.org/2000/svg"
+                                    >
+                                        <path
+                                            strokeLinecap="round"
+                                            strokeLinejoin="round"
+                                            strokeWidth="2"
+                                            d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12"
+                                        />
+                                    </svg>
                                     {isDragActive ? (
                                         <p className="text-blue-500 font-medium">Drop the file here...</p>
                                     ) : (
                                         <p className="text-gray-500">
-                                            {contentType === "pdf" 
-                                                ? "Drag & drop a PDF document here, or click to select one" 
+                                            {contentType === "pdf"
+                                                ? "Drag & drop a PDF document here, or click to select one"
                                                 : "Drag & drop an audio file here, or click to select one"}
                                         </p>
                                     )}
@@ -427,8 +418,8 @@ const UploadPage = () => {
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-6">
                         <div>
                             <label className="block text-gray-700 font-medium mb-2">Difficulty Level:</label>
-                            <select 
-                                value={difficulty} 
+                            <select
+                                value={difficulty}
                                 onChange={(e) => setDifficulty(e.target.value)}
                                 className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-purple-500 bg-white"
                             >
@@ -473,14 +464,13 @@ const UploadPage = () => {
                         </div>
                     </div>
 
-                    <button 
-                        onClick={submitForm} 
+                    <button
+                        onClick={submitForm}
                         disabled={loading}
-                        className={`w-full py-3 px-6 text-white font-medium rounded-lg shadow-md transition-all duration-300 ${
-                            loading 
-                                ? "bg-gray-400 cursor-not-allowed" 
+                        className={`w-full py-3 px-6 text-white font-medium rounded-lg shadow-md transition-all duration-300 ${loading
+                                ? "bg-gray-400 cursor-not-allowed"
                                 : "bg-gradient-to-r from-blue-500 to-purple-600 hover:from-blue-600 hover:to-purple-700 transform hover:-translate-y-1"
-                        }`}
+                            }`}
                     >
                         {loading ? (
                             <span className="flex items-center justify-center bg-blue">
