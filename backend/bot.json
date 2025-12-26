@@ -1,0 +1,282 @@
+{
+    "personal_info": {
+        "name": "Shimal Akmal D",
+        "email": "shimalakmal12@gmail.com",
+        "phone": "+91 98949 *****",
+        "portfolio": "https://shimalakmald.vercel.app",
+        "github": "https://github.com/Shimal007",
+        "linkedin": "",
+        "leetcode": "",
+        "role": "Full Stack & GenAI Developer"
+    },
+    "profile_summary": "AI & ML Engineering student experienced in developing end-to-end intelligent systems and scalable full-stack applications. Skilled in LangChain, LLaMA, React, Flask, and MongoDB. Built practical AI systems across NLP, computer vision, automation, and mock interview platforms. Passionate about integrating research-grade AI into real-world products.",
+    "education": [
+        {
+            "degree": "B.Tech in AI & ML",
+            "institution": "Kongu Engineering College",
+            "duration": "2023 - 2027",
+            "cgpa": "8.6 / 10"
+        },
+        {
+            "degree": "HSE & SSLC",
+            "institution": "Kongu Kalvi Nilayam Matric Hr Sec School",
+            "graduation": "2023",
+            "score": "94.2%"
+        }
+    ],
+    "skills": {
+        "languages": [
+            "Python",
+            "JavaScript",
+            "Java"
+        ],
+        "frameworks": [
+            "React",
+            "Node.js",
+            "Express",
+            "Flask"
+        ],
+        "databases": [
+            "SQL",
+            "MongoDB"
+        ],
+        "ai_ml": [
+            "Deep Learning",
+            "OpenCV",
+            "LangChain",
+            "TensorFlow",
+            "LLaMA",
+            "RAG Pipelines"
+        ],
+        "tools": [
+            "Git",
+            "Vercel",
+            "Render",
+            "Netlify"
+        ]
+    },
+    "projects": [
+        {
+            "id": 1,
+            "name": "Ticket Booking Chatbot for Museum",
+            "type": "AI Project",
+            "description": "A WhatsApp and Web-based museum booking chatbot using LangChain + LLaMA with payment integration.",
+            "features": [
+                "Natural language query handling",
+                "Razorpay payment integration",
+                "MongoDB booking management",
+                "Email confirmations",
+                "Route suggestions via OpenRouteService"
+            ],
+            "tech_stack": [
+                "React.js",
+                "Flask",
+                "MongoDB",
+                "LangChain",
+                "LLaMA",
+                "Razorpay"
+            ]
+        },
+        {
+            "id": 2,
+            "name": "AI-Powered Photo Management Platform",
+            "type": "AI / Computer Vision",
+            "description": "A facial-recognition-based photo management system with Google Drive integration.",
+            "features": [
+                "98% accurate face recognition",
+                "Cross-folder cloud search",
+                "CLIP-based text-to-image search",
+                "Chrome extension for instant detection"
+            ],
+            "tech_stack": [
+                "MTCNN",
+                "FaceNet",
+                "CLIP",
+                "React.js",
+                "Flask",
+                "MongoDB"
+            ]
+        },
+        {
+            "id": 3,
+            "name": "AI-Powered Mock Interview Platform",
+            "type": "Full Stack + AI",
+            "description": "Adaptive AI-driven mock interview system with ATS, proctoring and feedback scoring.",
+            "features": [
+                "Adaptive question generation (LLaMA)",
+                "Speech-to-text (Whisper)",
+                "Face detection + proctoring",
+                "ATS resume evaluation",
+                "Performance analytics dashboard"
+            ],
+            "tech_stack": [
+                "React.js",
+                "Flask",
+                "MongoDB",
+                "LangChain",
+                "LLaMA",
+                "OpenCV"
+            ]
+        },
+        {
+            "id": 4,
+            "name": "AI Content Generation Platform",
+            "type": "Full Stack",
+            "description": "Full-stack platform for multilingual content, image generation, and credit-based usage.",
+            "tech_stack": [
+                "React.js",
+                "Node.js",
+                "Mistral models",
+                "Diffusion models"
+            ]
+        },
+        {
+            "id": 5,
+            "name": "Fitness App with User Authentication",
+            "type": "Mobile App / Full Stack",
+            "description": "A sleek mobile fitness app built using React Native and Firebase with secure user authentication.",
+            "features": [
+                "Google, Facebook, Apple social logins",
+                "JWT-based session handling",
+                "User profile creation & goal tracking",
+                "Gradient-based modern UI design",
+                "Smooth navigation powered by React Navigation"
+            ],
+            "tech_stack": [
+                "React Native",
+                "Firebase Authentication",
+                "Expo",
+                "React Navigation",
+                "Clerk"
+            ]
+        },
+        {
+            "id": 6,
+            "name": "AI Content Generator Platform",
+            "type": "AI + Full Stack",
+            "description": "MERN stack content generation system powered by Google AI and Groq, supporting 18+ content templates with credit-based payments.",
+            "features": [
+                "SEO-optimized content generation",
+                "Code generation using Groq LLM",
+                "18+ ready-made templates",
+                "Razorpay-based credit payment system",
+                "Admin dashboard with analytics"
+            ],
+            "tech_stack": [
+                "React.js",
+                "Node.js",
+                "Express.js",
+                "MongoDB",
+                "Google AI",
+                "Groq",
+                "Razorpay"
+            ]
+        }
+    ],
+    "achievements": [
+        {
+            "id": 7,
+            "event": "Newells2K25",
+            "prize": "1st Prize",
+            "project": "AI Mock Interviewer",
+            "venue": "PSG College of Technology",
+            "date": "October 2025"
+        },
+        {
+            "id": 8,
+            "event": "IBM GenAI Hackathon",
+            "prize": "2nd Prize",
+            "project": "GenAI Solution",
+            "venue": "IBM",
+            "date": "2024"
+        },
+        {
+            "id": 9,
+            "event": "Hackovate25 Hackathon",
+            "prize": "1st Prize",
+            "project": "Hackathon Project",
+            "venue": "2025",
+            "date": "2025"
+        },
+        {
+            "id": 10,
+            "event": "Hackvotrix25 Hackathon",
+            "prize": "1st Prize",
+            "project": "Hackathon Project",
+            "venue": "2025",
+            "date": "2025"
+        },
+        {
+            "id": 11,
+            "event": "CSI25 Hackathon",
+            "prize": "2nd Prize",
+            "project": "Hackathon Project",
+            "venue": "2025",
+            "date": "2025"
+        },
+        {
+            "id": 12,
+            "event": "Exodia25 Hackathon",
+            "prize": "1st Prize",
+            "project": "Hackathon Project",
+            "venue": "2025",
+            "date": "2025"
+        }
+    ],
+    "competitive_programming": {
+        "platform": "LeetCode",
+        "problems_solved": "200+",
+        "languages_used": [
+            "Python",
+            "Java"
+        ],
+        "focus_areas": [
+            "Arrays",
+            "Strings",
+            "Dynamic Programming",
+            "Recursion",
+            "Graphs",
+            "Optimization"
+        ],
+        "goal": "Strengthen foundations for coding interviews at product-based companies"
+    },
+    "leadership": [
+        {
+            "role": "Executive Member",
+            "organization": "Cloud User Club",
+            "duration": "2024 - 2025"
+        },
+        {
+            "role": "Executive Member",
+            "organization": "CSI (Computer Society of India)",
+            "duration": "2023 - 2024"
+        },
+        {
+            "role": "Executive Member",
+            "organization": "Robotics Club",
+            "duration": "2024 - 2025"
+        }
+    ],
+    "career_goals": {
+        "target_roles": [
+            "AI Engineer",
+            "Full Stack + AI Engineer"
+        ],
+        "target_companies": "Product-based companies",
+        "interests": [
+            "LLMs",
+            "RAG Systems",
+            "Multi-Agent AI",
+            "Automation",
+            "Scalable Backend Systems"
+        ],
+        "short_term_goal": "Crack top-tier company placements starting January next year",
+        "career_objective": "To grow in a future-focused environment while contributing to impactful AI-driven products."
+    },
+    "areas_of_interest": [
+        "Full Stack Development",
+        "Machine Learning",
+        "Generative AI",
+        "Agentic AI Development"
+    ]
+}

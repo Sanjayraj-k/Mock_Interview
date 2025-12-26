@@ -9,9 +9,9 @@ import numpy as np
 import cv2
 from flask import Blueprint, request, jsonify, session
 from langchain_groq import ChatGroq
-from langchain.prompts import PromptTemplate
-from langchain.chains import LLMChain
-from langchain.memory import ConversationBufferMemory
+from langchain_core.prompts import PromptTemplate
+from langchain_classic.chains import LLMChain
+from langchain_classic.memory import ConversationBufferMemory
 from dotenv import load_dotenv
 
 # Windows-specific audio (optional)

@@ -18,7 +18,7 @@ companyscrap_bp = Blueprint('companyscrap', __name__, url_prefix='/companyscrap'
 # --- Gemini API Configuration ---
 # Securely get the API key from environment variables.
 # Get your free key from Google AI Studio: https://aistudio.google.com/app/apikey
-GEMINI_API_KEY = os.getenv("GEMINI_API_KEY", "AIzaSyAMHofGFNDtR1FIwVNooqsCRcnxW15MDUQ")
+GEMINI_API_KEY = os.getenv("GEMINI_API_KEY", "AIzaSyAhxdn1b4o6_KglbSNg96pSJkXOdfgtcvY")
 
 # --- Global Configuration ---
 HEADERS = {
@@ -34,7 +34,7 @@ def call_gemini_model(prompt, max_tokens=250, temperature=0.8):
     try:
         genai.configure(api_key=GEMINI_API_KEY)
         generation_config = {"temperature": temperature, "max_output_tokens": max_tokens}
-        model = genai.GenerativeModel(model_name="gemini-2.0-flash-lite", generation_config=generation_config)
+        model = genai.GenerativeModel(model_name="gemini-2.5-flash-lite", generation_config=generation_config)
         response = model.generate_content(prompt)
         # Clean the response to remove potential markdown formatting
         return re.sub(r'[\*`]', '', response.text).strip()
