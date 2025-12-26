@@ -1,94 +1,131 @@
 """
 Company Profile Blueprint for Flask Application
 Enhanced Company Profile Backend Server
-Workflow: User Input → Gemini (find full name) → Wikipedia → Content extraction → Gemini summarization → Frontend
+Workflow: User Input → Groq (Llama 3.1 405B) find full name → Wikipedia → Content extraction → Groq summarization → Frontend
 """
 
 from flask import Blueprint, request, jsonify
 import os
 import re
 import wikipedia
-import requests
 from bs4 import BeautifulSoup
-import google.generativeai as genai
+from groq import Groq
 
 # Blueprint for Company Scrap
 companyscrap_bp = Blueprint('companyscrap', __name__, url_prefix='/companyscrap')
 
-# --- Gemini API Configuration ---
-# Securely get the API key from environment variables.
-# Get your free key from Google AI Studio: https://aistudio.google.com/app/apikey
-GEMINI_API_KEY = os.getenv("GEMINI_API_KEY", "AIzaSyAMHofGFNDtR1FIwVNooqsCRcnxW15MDUQ")
+# --- Groq API Configuration ---
+# Get your free Groq API key from: https://console.groq.com/keys
+GROQ_API_KEY = os.getenv("GROQ_API_KEY")
+
+# Preferred model: Llama 3.1 405B (extremely capable)
+# Fallback: llama3-70b-8192 if rate-limited or unavailable
+GROQ_MODEL = "openai/gpt-oss-120b"  # Best performance
+# GROQ_MODEL = "llama3-70b-8192"  # Reliable fallback
+
+client = Groq(api_key=GROQ_API_KEY) if GROQ_API_KEY else None
 
 # --- Global Configuration ---
 HEADERS = {
     "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36"
 }
 
-def call_gemini_model(prompt, max_tokens=250, temperature=0.8):
-    """Generic function to call the Gemini model."""
-    if not GEMINI_API_KEY:
-        print("Gemini API key not configured. Set GEMINI_API_KEY environment variable. Skipping model call.")
+def call_groq_model(prompt, max_tokens=300, temperature=0.7):
+    """Generic function to call Groq's Llama model."""
+    if not client:
+        print("Groq API key not configured. Set GROQ_API_KEY environment variable.")
         return "AI model not available. API key is missing."
 
     try:
-        genai.configure(api_key=GEMINI_API_KEY)
-        generation_config = {"temperature": temperature, "max_output_tokens": max_tokens}
-        model = genai.GenerativeModel(model_name="gemini-2.0-flash-lite", generation_config=generation_config)
-        response = model.generate_content(prompt)
-        # Clean the response to remove potential markdown formatting
-        return re.sub(r'[\*`]', '', response.text).strip()
+        chat_completion = client.chat.completions.create(
+            messages=[{"role": "user", "content": prompt}],
+            model=GROQ_MODEL,
+            temperature=temperature,
+            max_tokens=max_tokens,
+            top_p=1,
+            stop=None,
+        )
+        response_text = chat_completion.choices[0].message.content.strip()
+        # Clean markdown artifacts
+        return re.sub(r'[\*`#]', '', response_text).strip()
     except Exception as e:
-        print(f"Error calling Gemini model: {e}")
+        print(f"Error calling Groq model: {e}")
         return None
 
 def find_full_company_name(user_input):
-    """Step 1: Use Gemini to find the full company name from user input"""
+    """Step 1: Use Groq (Llama) to find the full company name from user input"""
     print(f"Finding full company name for: '{user_input}'")
     prompt = f"""
-    Given the company name or ticker symbol: "{user_input}"
-    What is the full, official legal name of this company?
-    Examples:
-    - Input: "Apple" -> Output: "Apple Inc."
-    - Input: "Google" -> Output: "Alphabet Inc."
-    Respond with ONLY the full company name and nothing else.
-    """
-    full_name = call_gemini_model(prompt, max_tokens=50, temperature=0.0)
+You are a precise company name resolver.
+Given a company name, abbreviation, or ticker symbol: "{user_input}"
+Return ONLY the full official legal name of the company.
+
+Examples:
+- "Apple" → "Apple Inc."
+- "MSFT" → "Microsoft Corporation"
+- "Google" → "Alphabet Inc."
+- "Tesla" → "Tesla, Inc."
+
+Respond with nothing but the full name.
+"""
+    full_name = call_groq_model(prompt, max_tokens=50, temperature=0.0)
     if full_name and full_name.strip():
-        cleaned_name = full_name.replace('"', '').strip()
-        print(f"Full company name found via Gemini: {cleaned_name}")
+        cleaned_name = full_name.strip().strip('"').strip()
+        print(f"Full company name found via Groq: {cleaned_name}")
         return cleaned_name
     else:
-        print(f"Gemini failed, using fallback. Using original input as full name: {user_input}")
+        print(f"Groq failed or returned empty. Falling back to original input: {user_input}")
         return user_input.strip()
 
 def extract_wikipedia_content(company_name):
     """Step 2: Extract content from Wikipedia"""
     print(f"Extracting Wikipedia content for: {company_name}")
-    wikipedia_content = {"summary": "", "page_content": "", "url": "", "found": False}
+    wikipedia_content = {"summary": "", "page_content": "", "url": "", "title": "", "found": False}
     try:
-        search_results = wikipedia.search(company_name, results=3)
+        search_results = wikipedia.search(company_name, results=5)
         if not search_results:
             print("No Wikipedia results found")
             return wikipedia_content
-        page = wikipedia.page(search_results[0], auto_suggest=False)
-        if any(keyword in page.content.lower() for keyword in ['company', 'corporation', 'inc.', 'ltd.', 'business', 'founded']):
-            wikipedia_content = {"summary": page.summary, "page_content": page.content, "url": page.url, "title": page.title, "found": True}
-            print(f"Found relevant Wikipedia page: {page.title}")
-    except wikipedia.exceptions.DisambiguationError as e:
-        print(f"Disambiguation error. Trying first option: {e.options[0]}")
-        try:
-            page = wikipedia.page(e.options[0], auto_suggest=False)
-            wikipedia_content = {"summary": page.summary, "page_content": page.content, "url": page.url, "title": page.title, "found": True}
-            print(f"Found Wikipedia page via disambiguation: {page.title}")
-        except Exception as e_inner:
-            print(f"Could not resolve disambiguation: {e_inner}")
+
+        # Try first result, validate it's a company page
+        for result in search_results:
+            try:
+                page = wikipedia.page(result, auto_suggest=False)
+                content_lower = page.content.lower()
+                if any(keyword in content_lower for keyword in ['company', 'corporation', 'inc.', 'ltd.', 'business', 'founded', 'headquarters']):
+                    wikipedia_content = {
+                        "summary": page.summary,
+                        "page_content": page.content,
+                        "url": page.url,
+                        "title": page.title,
+                        "found": True
+                    }
+                    print(f"Found relevant Wikipedia page: {page.title}")
+                    return wikipedia_content
+            except wikipedia.exceptions.PageError:
+                continue
+            except wikipedia.exceptions.DisambiguationError as e:
+                # Try the first disambiguation option
+                try:
+                    page = wikipedia.page(e.options[0], auto_suggest=False)
+                    wikipedia_content = {
+                        "summary": page.summary,
+                        "page_content": page.content,
+                        "url": page.url,
+                        "title": page.title,
+                        "found": True
+                    }
+                    print(f"Found via disambiguation: {page.title}")
+                    return wikipedia_content
+                except:
+                    continue
+        print("No valid company page found after trying multiple results.")
     except Exception as e:
         print(f"Error extracting Wikipedia content: {e}")
     return wikipedia_content
 
-def extract_relevant_text(page_content, keywords, max_length=2000):
-    """Extracts sentences containing specific keywords from a larger text."""
+def extract_relevant_text(page_content, keywords, max_length=3000):
+    """Extracts sentences containing specific keywords."""
     sentences = re.split(r'(?<=[.!?])\s+', page_content)
     relevant_text = []
     current_length = 0
@@ -101,145 +138,159 @@ def extract_relevant_text(page_content, keywords, max_length=2000):
     return " ".join(relevant_text) if relevant_text else page_content[:max_length]
 
 def summarize_with_ai(wikipedia_content, topic, company_name):
-    """Step 3 & 4: Extract relevant context and summarize with Gemini"""
+    """Step 3 & 4: Extract relevant context and summarize with Groq (Llama)"""
     if not wikipedia_content["found"]:
         return None
-    print(f"Summarizing '{topic}' content for {company_name} with Gemini...")
+
+    print(f"Summarizing '{topic}' for {company_name} with Groq...")
+
     topic_keywords = {
-        "vision": ["vision", "aspiration", "future goal", "aims to"],
-        "mission": ["mission", "purpose", "core values", "objective"],
+        "vision": ["vision", "aspiration", "future", "long-term goal", "aims to"],
+        "mission": ["mission", "purpose", "core values", "objective", "commitment"],
         "founding_info": ["founded", "founder", "established", "history", "inception"],
         "business_model": ["business model", "operates", "revenue", "products", "services"],
-        "products_services": ["products", "services", "offers", "sells", "develops"],
-        "achievements": ["achievement", "milestone", "award", "recognition"],
-        "financial_info": ["revenue", "net income", "profit", "assets", "market capitalization"],
-        # New keywords for the new fields
-        "founder": ["founder", "founded by", "established by"],
-        "headquarters": ["headquarters", "headquartered", "based in", "main office"],
-        "employees": ["employees", "number of employees", "staff", "workforce"],
+        "products_services": ["products", "services", "offers", "platform", "develops"],
+        "achievements": ["achievement", "milestone", "award", "recognition", "launched"],
+        "financial_info": ["revenue", "profit", "income", "market cap", "valuation"],
+        "founder": ["founder", "founded by", "co-founder", "established by"],
+        "headquarters": ["headquarters", "headquartered", "based in", "located in"],
+        "employees": ["employees", "workforce", "staff", "team size", "employs"],
     }
+
     context = extract_relevant_text(wikipedia_content["page_content"], topic_keywords.get(topic, []))
+
     prompts = {
-        "vision": f"Based on this text about {company_name}, what is its corporate vision? Summarize it into a concise statement (1-2 sentences). If not explicitly stated, infer its long-term aspiration. Context: '{context}'",
-        "mission": f"Based on this text about {company_name}, what is its corporate mission? Summarize what the company does and for whom in 1-2 sentences. Context: '{context}'",
-        "founding_info": f"From this text about {company_name}, describe its founding. Include the year, founders, and original purpose. Format as a short paragraph. Context: '{context}'",
-        "products_services": f"Based on this content for {company_name}, list its main products and/or services. Use a bulleted list format. Context: '{context}'",
-        "achievements": f"From the provided text about {company_name}, list 3-4 of its most significant recent achievements or milestones. Use a bulleted list. Context: '{context}'",
-        "financial_info": f"Extract key financial metrics for {company_name} from this text. Look for revenue or market cap, and include the year if available. Present it concisely. Context: '{context}'",
-        # New prompts for the new fields
-        "founder": f"From the text about {company_name}, who is the founder or who are the founders? Respond with only the name(s) (e.g., 'Steve Jobs, Steve Wozniak, Ronald Wayne'). If not found, respond with 'Not available'. Context: '{context}'",
-        "headquarters": f"From the text about {company_name}, where is its headquarters? Provide the city and country (e.g., 'Westminster, Colorado, U.S.'). If not found, respond with 'Not available'. Context: '{context}'",
-        "employees": f"From this text about {company_name}, what is the number of employees? Provide the number and the year if available (e.g., '164,000 (2022)'). If not found, respond with 'Not available'. Context: '{context}'",
+        "vision": f"Based on the following text about {company_name}, what is the company's vision statement or long-term aspiration? Write it as 1-2 clear sentences. If not explicit, infer from goals and direction.\n\nContext: {context}",
+        "mission": f"Summarize the mission or core purpose of {company_name} in 1-2 sentences based on this text. Focus on what the company does and whom it serves.\n\nContext: {context}",
+        "founding_info": f"Describe the founding of {company_name}: include year, founder(s), and original purpose or idea. Write as a short paragraph.\n\nContext: {context}",
+        "products_services": f"List the main products and services of {company_name} in a clean bulleted list format (use - for bullets).\n\nContext: {context}",
+        "achievements": f"List 3–5 of the most significant recent achievements or milestones of {company_name} in bullet points.\n\nContext: {context}",
+        "financial_info": f"Extract the latest available key financial figures for {company_name} (e.g., revenue, profit, market cap) and the year they refer to. Present concisely.\n\nContext: {context}",
+        "founder": f"Who founded {company_name}? Return only the name(s) of the founder(s), comma-separated if multiple. If unknown, say 'Not available'.\n\nContext: {context}",
+        "headquarters": f"Where is {company_name} headquartered? Return only the city and country (e.g., 'Cupertino, California, United States'). If unknown, say 'Not available'.\n\nContext: {context}",
+        "employees": f"How many employees does {company_name} have? Return the number and year if available (e.g., '165,000 (2023)'). If unknown, say 'Not available'.\n\nContext: {context}",
     }
+
     prompt = prompts.get(topic)
-    if not prompt: return f"No summarization prompt configured for topic: {topic}"
-    result = call_gemini_model(prompt, max_tokens=200, temperature=0.1)
-    return result if result and result.strip() else "Information not found in the provided context."
+    if not prompt:
+        return f"No prompt configured for topic: {topic}"
+
+    result = call_groq_model(prompt, max_tokens=250, temperature=0.2)
+    return result.strip() if result else "Information not available."
 
 def process_company_profile(user_input):
-    """Main processing function following the required workflow"""
+    """Main processing function"""
     print(f"\n=== Starting company profile processing for: {user_input} ===")
     profile = {
-        "original_input": user_input, "full_company_name": "", "vision": None, "mission": None,
-        "founding_info": None, "products_services": [], "recent_achievements": [], "financial_info": None,
-        # New fields added to the profile
-        "founder": None, "headquarters": None, "employees": None,
-        "wikipedia_source": "", "processing_steps": []
+        "original_input": user_input,
+        "full_company_name": "",
+        "vision": None,
+        "mission": None,
+        "founding_info": None,
+        "products_services": [],
+        "recent_achievements": [],
+        "financial_info": None,
+        "founder": None,
+        "headquarters": None,
+        "employees": None,
+        "wikipedia_source": "",
+        "processing_steps": []
     }
-    
+
     try:
-        profile["processing_steps"].append("🔍 Finding full company name with Gemini...")
+        profile["processing_steps"].append("🔍 Finding full company name with Groq (Llama 3.1)...")
         full_name = find_full_company_name(user_input)
         profile["full_company_name"] = full_name
-        profile["processing_steps"].append(f"✅ Full name identified: {full_name}")
-        
+        profile["processing_steps"].append(f"✅ Full name: {full_name}")
+
         profile["processing_steps"].append("📚 Searching Wikipedia...")
         wikipedia_content = extract_wikipedia_content(full_name)
-        
+
         if not wikipedia_content["found"]:
             profile["processing_steps"].append("❌ No relevant Wikipedia page found.")
-            profile["vision"] = f"Could not find a reliable Wikipedia page for '{full_name}'. Please try a more specific name."
+            profile["vision"] = f"Could not find a reliable Wikipedia page for '{full_name}'."
             return profile
 
         profile["wikipedia_source"] = wikipedia_content["url"]
-        profile["processing_steps"].append(f"✅ Wikipedia page found: {wikipedia_content['title']}")
-        
+        profile["processing_steps"].append(f"✅ Found: {wikipedia_content['title']}")
+
         topics = [
             ("vision", "🎯 Summarizing Vision..."),
             ("mission", "🧭 Summarizing Mission..."),
-            ("founding_info", "📅 Summarizing Founding Info..."),
-            # New topics added to the processing queue
+            ("founding_info", "📅 Summarizing Founding..."),
             ("founder", "👤 Identifying Founder(s)..."),
             ("headquarters", "📍 Locating Headquarters..."),
-            ("employees", "👥 Counting Employees..."),
-            ("products_services", "📦 Listing Products & Services..."),
-            ("achievements", "🏆 Identifying Achievements..."),
-            ("financial_info", "💰 Extracting Financial Info...")
+            ("employees", "👥 Employee Count..."),
+            ("products_services", "📦 Products & Services..."),
+            ("achievements", "🏆 Recent Achievements..."),
+            ("financial_info", "💰 Financial Info...")
         ]
-        
+
         for topic, step_msg in topics:
             profile["processing_steps"].append(step_msg)
             summary = summarize_with_ai(wikipedia_content, topic, full_name)
-            if summary:
+            if summary and summary not in ["Information not available.", "Not available"]:
                 if topic in ["products_services", "recent_achievements"]:
-                    items = [item.strip() for item in re.split(r'\n\s*[\*•-]\s*', summary) if item.strip()]
-                    profile[topic] = items
+                    # Parse bullet points
+                    items = [line.strip("-•* ").strip() for line in summary.split('\n') if line.strip().startswith(('-', '•', '*')) or line.strip()]
+                    if not items:  # fallback
+                        items = [s.strip() for s in summary.split('\n') if s.strip()]
+                    profile[topic if topic != "achievements" else "recent_achievements"] = items
                 else:
                     profile[topic] = summary
-                profile["processing_steps"].append(f"✅ {topic.replace('_', ' ').title()} processed.")
+                profile["processing_steps"].append(f"✅ {topic.replace('_', ' ').title()} completed")
             else:
-                profile["processing_steps"].append(f"⚠️ {topic.replace('_', ' ').title()} - AI summarization failed.")
-        profile["processing_steps"].append("🎉 Processing completed successfully!")
+                profile["processing_steps"].append(f"ℹ️ {topic.replace('_', ' ').title()}: Not available")
+
+        profile["processing_steps"].append("🎉 Processing completed!")
+
     except Exception as e:
-        print(f"An unexpected error occurred in process_company_profile: {e}")
-        profile["processing_steps"].append(f"❌ Critical Error: {str(e)}")
-        profile["vision"] = f"An error occurred while processing '{user_input}'. Please try again."
+        print(f"Critical error: {e}")
+        profile["processing_steps"].append(f"❌ Error: {str(e)}")
+
     return profile
 
 # --- API Routes ---
 
 @companyscrap_bp.route('/api/company-profile', methods=['POST'])
 def company_profile():
-    """Main endpoint to get company profile information"""
     try:
         data = request.get_json()
         company_input = data.get('company_name', '').strip()
-        
         if not company_input:
             return jsonify({"error": "Company name is required"}), 400
-        
+
         profile = process_company_profile(company_input)
-        
         return jsonify({"success": True, "data": profile}), 200
     except Exception as e:
-        print(f"Error processing POST request: {e}")
+        print(f"API Error: {e}")
         return jsonify({"success": False, "error": str(e)}), 500
 
 @companyscrap_bp.route('/health', methods=['GET'])
 def health_check():
-    """Health check endpoint"""
     return jsonify({
         'status': 'healthy',
-        'message': 'Company Scrap service is running',
-        'gemini_configured': bool(GEMINI_API_KEY)
+        'message': 'Company Profile service running with Groq (Llama 3.1)',
+        'groq_configured': bool(GROQ_API_KEY),
+        'model': GROQ_MODEL
     }), 200
 
 @companyscrap_bp.route('/', methods=['GET'])
 def index():
-    """Index page with API documentation"""
     return jsonify({
-        'service': 'Company Profile API',
-        'version': '1.0.0',
+        'service': 'Company Profile API (Powered by Groq + Llama 3.1)',
+        'version': '1.1.0',
+        'model': GROQ_MODEL,
         'endpoints': {
-            'POST /api/company-profile': 'Get company profile information',
+            'POST /api/company-profile': 'Get structured company profile',
             'GET /health': 'Health check',
-            'GET /': 'This documentation'
+            'GET /': 'API documentation'
         },
         'workflow': [
-            'User Input → Gemini (find full name)',
-            'Extract content from Wikipedia',
-            'Extract topic-specific text from Wikipedia content',
-            'Gemini summarizes each topic (Vision, Mission, Founder, HQ, etc.)',
-            'Structured JSON response sent to frontend'
+            'User Input → Groq Llama 3.1 (resolve full name)',
+            'Wikipedia search & content extraction',
+            'Topic-specific context extraction',
+            'Groq Llama 3.1 summarizes each section',
+            'Return structured JSON'
         ]
     }), 200
