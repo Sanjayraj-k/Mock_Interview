@@ -1,0 +1,482 @@
+{
+    "personal_info": {
+        "name": "Sanjay K",
+        "email": "ksanjayias@gmail.com",
+        "phone": "9940717141",
+        "location": "Tiruppur, India",
+        "portfolio_url": "https://sanjayk.vercel.app",
+        "github": "https://github.com/Sanjayraj-k",
+        "linkedin": "https://www.linkedin.com/in/sanjayraj-k/",
+        "leetcode": "sanjayrajk",
+        "role": "Full Stack & GenAI Developer",
+        "open_to": [
+            "Internships",
+            "Full-time roles",
+            "AI-focused freelance projects"
+        ]
+    },
+    "introduction": {
+        "tagline": "Hi, I'm Sanjay K - a Full Stack & GenAI Developer.",
+        "summary": "I love building real-world AI products and full-stack applications that solve practical problems. I'm currently pursuing B.Tech in Artificial Intelligence and Machine Learning at Kongu Engineering College.",
+        "about": "I'm a full stack enthusiast and Generative AI developer with strong problem-solving skills. I enjoy turning ideas into working products - from backend APIs to clean, responsive UIs. I've worked on multiple AI + full-stack projects such as museum ticket booking chatbots, AI-powered quiz generators, and intelligent automation tools. I actively practice data structures and algorithms on LeetCode using Python and Java (over 200 problems solved) to sharpen my logical thinking."
+    },
+    "education": [
+        {
+            "degree": "B.Tech in AI & Machine Learning",
+            "institution": "Kongu Engineering College",
+            "duration": "2023 - 2027",
+            "grade": "CGPA: 8.35 / 10",
+            "status": "Currently Pursuing"
+        },
+        {
+            "degree": "HSC (Higher Secondary Certificate)",
+            "institution": "Vidhyaa Vikas Matric Hr Sec School",
+            "graduation_date": "May 2023",
+            "grade": "90.5%"
+        },
+        {
+            "degree": "SSLC (Secondary School Leaving Certificate)",
+            "institution": "Vidhyaa Vikas Matric Hr Sec School",
+            "graduation_date": "May 2021",
+            "grade": "All Pass"
+        }
+    ],
+    "skills": {
+        "programming_languages": [
+            "Python",
+            "Java",
+            "JavaScript"
+        ],
+        "frontend": [
+            "React.js",
+            "HTML",
+            "CSS"
+        ],
+        "backend": [
+            "Flask",
+            "Node.js",
+            "Express.js",
+            "REST APIs"
+        ],
+        "databases": [
+            "MongoDB",
+            "SQLite",
+            "SQL"
+        ],
+        "ai_ml": [
+            "LLMs (Llama 3, Gemini, Groq)",
+            "LangChain",
+            "LangGraph",
+            "RAG Systems",
+            "Machine Learning Models",
+            "MTCNN",
+            "FaceNet",
+            "CLIP Model",
+            "OpenAI Whisper",
+            "OpenCV"
+        ],
+        "frameworks_libraries": [
+            "Pandas",
+            "NumPy",
+            "Keras",
+            "TensorFlow",
+            "NLTK"
+        ],
+        "tools_platforms": [
+            "Git",
+            "GitHub",
+            "Vercel",
+            "PowerBI",
+            "Kaggle"
+        ],
+        "integrations": [
+            "Razorpay",
+            "Google Drive API",
+            "OpenRouteService",
+            "OAuth 2.0"
+        ],
+        "other": [
+            "Problem Solving",
+            "System Design Basics",
+            "Prompt Engineering"
+        ]
+    },
+    "experience": [
+        {
+            "company": "Aerele Technologies",
+            "role": "Software Developer Intern",
+            "duration": "Aug 2025 - Oct 2025",
+            "location": "Tiruppur",
+            "type": "Internship",
+            "responsibilities": [
+                "Developed an AI-powered quiz generator using Groq's LLaMA 4 for dynamic question generation",
+                "Integrated with Google Forms for secure assessments",
+                "Implemented proctoring features including tab-switch detection, face tracking, and speech monitoring",
+                "Built full-stack architecture enabling teachers to assign quizzes, track performance, and manage results"
+            ]
+        }
+    ],
+    "projects": [
+        {
+            "id": 1,
+            "name": "Museum Ticket Booking Chatbot",
+            "description": "An AI-powered assistant and ticket booking bot for a museum that handles visitor queries and complete ticket booking workflow.",
+            "tech_stack": [
+                "React.js",
+                "Flask",
+                "LLaMA 3.2 (8B)",
+                "Groq",
+                "Razorpay",
+                "MongoDB",
+                "LangChain",
+                "Chroma",
+                "OpenRouteService"
+            ],
+            "features": [
+                "AI chatbot that answers visitor questions about the museum",
+                "Complete ticket booking workflow with seat/slot selection",
+                "Online payment integration using Razorpay",
+                "Automated ticket delivery via email",
+                "Location-based queries using OpenRouteService",
+                "Multi-platform support (WhatsApp and Web)",
+                "Real-time booking management with automated confirmations"
+            ],
+            "outcome": "Demonstrates full-stack development, API integration, payment gateway handling, and practical use of LLMs in a real application scenario.",
+            "category": [
+                "AI",
+                "Full Stack",
+                "Chatbot"
+            ]
+        },
+        {
+            "id": 2,
+            "name": "AI-Powered Quiz Generating System",
+            "description": "A system that generates quizzes automatically from lecture materials and monitors test integrity using computer vision.",
+            "tech_stack": [
+                "Flask",
+                "React.js",
+                "Groq",
+                "LLaMA",
+                "LangChain",
+                "MongoDB",
+                "Computer Vision",
+                "Google Forms API"
+            ],
+            "features": [
+                "Upload PDFs/DOCX/TXT and automatically generate multiple-choice questions",
+                "RAG pipeline to retrieve relevant content and generate accurate questions",
+                "Automatic Google Forms creation and response fetching for evaluation",
+                "Proctoring features: tab-switch detection, face tracking, speech monitoring",
+                "Teacher dashboard for quiz assignment and performance tracking"
+            ],
+            "outcome": "Automates quiz creation for teachers and improves exam integrity using AI and computer vision.",
+            "category": [
+                "AI",
+                "Education Tech",
+                "Full Stack"
+            ]
+        },
+        {
+            "id": 3,
+            "name": "AI-Powered Mock Interview Platform",
+            "description": "A virtual interview simulator with adaptive question generation, personalized feedback, and real-time performance evaluation.",
+            "tech_stack": [
+                "React.js",
+                "Flask",
+                "MongoDB",
+                "LangChain",
+                "LLaMA",
+                "OpenAI Whisper",
+                "OpenCV",
+                "Chroma"
+            ],
+            "features": [
+                "Adaptive AI question generation based on responses",
+                "Speech-to-text integration using OpenAI Whisper",
+                "Face detection and proctoring for interview authenticity",
+                "ATS-based resume checking",
+                "Real-time performance evaluation and personalized feedback",
+                "Community discussions feature",
+                "Company insights extraction"
+            ],
+            "outcome": "Helps candidates prepare for interviews with realistic AI-powered simulation and feedback.",
+            "category": [
+                "AI",
+                "Full Stack",
+                "HR Tech"
+            ]
+        },
+        {
+            "id": 4,
+            "name": "AI-Powered Photo Management Platform",
+            "description": "A facial recognition system for intelligent photo management with cross-folder search and Chrome extension support.",
+            "tech_stack": [
+                "React.js",
+                "Flask",
+                "MongoDB",
+                "MTCNN",
+                "FaceNet (InceptionResNetV1)",
+                "CLIP",
+                "Google Drive API",
+                "OAuth 2.0",
+                "Chrome Extension"
+            ],
+            "features": [
+                "Facial recognition using MTCNN and FaceNet with 98% matching accuracy",
+                "CLIP model integration for text-to-image search capabilities",
+                "Google Drive API integration with OAuth 2.0 for cross-folder photo search",
+                "Photo tagging functionality",
+                "Chrome Extension for instant face-based photo retrieval",
+                "60% improvement in search speed"
+            ],
+            "outcome": "Advanced photo management with state-of-the-art facial recognition and seamless cloud integration.",
+            "category": [
+                "AI",
+                "Computer Vision",
+                "Full Stack"
+            ]
+        },
+        {
+            "id": 5,
+            "name": "Intelligent Multi-Agent Ecosystem for Task Automation",
+            "description": "A multi-agent system where each LLM agent handles a specific dataset or task, with a final aggregator model combining outputs.",
+            "tech_stack": [
+                "LangChain",
+                "LangGraph",
+                "LLMs",
+                "Python"
+            ],
+            "features": [
+                "Multiple specialized LLM agents for different tables/relations",
+                "Aggregator model that merges partial answers into final accurate results",
+                "User feedback loop for continuous accuracy improvement",
+                "Complex query handling through agent coordination"
+            ],
+            "outcome": "Research-oriented project exploring coordination between multiple LLM agents for complex queries.",
+            "category": [
+                "AI",
+                "Research",
+                "Multi-Agent Systems"
+            ]
+        },
+        {
+            "id": 6,
+            "name": "LLM-based SQL Chatbot for Database Operations",
+            "description": "A chatbot that converts natural language into SQL queries for database operations.",
+            "tech_stack": [
+                "Google Generative AI",
+                "Flask",
+                "HTML/CSS/JavaScript",
+                "SQLite"
+            ],
+            "features": [
+                "Natural language to SQL query conversion",
+                "Support for search, insert, and delete operations",
+                "Book Ticket flow with availability checking and booking confirmation",
+                "End-to-end workflow automation"
+            ],
+            "outcome": "Demonstrates practical use of LLMs for text-to-SQL and workflow automation.",
+            "category": [
+                "AI",
+                "Database",
+                "Chatbot"
+            ]
+        },
+        {
+            "id": 7,
+            "name": "Event Management System",
+            "description": "A multi-role event management application for KEC College with payment integration and certificate management.",
+            "tech_stack": [
+                "MongoDB",
+                "Express.js",
+                "React.js",
+                "Node.js",
+                "Razorpay API",
+                "JWT"
+            ],
+            "features": [
+                "Student portal for viewing events, making payments, and downloading certificates",
+                "Club member interface for creating events and booking halls",
+                "Role-based approval system for club heads",
+                "Admin dashboard for hall availability management",
+                "Razorpay payment integration",
+                "JWT-based authentication"
+            ],
+            "outcome": "Complete MERN stack application with role-based access control and payment integration.",
+            "category": [
+                "Full Stack",
+                "MERN",
+                "Event Management"
+            ]
+        },
+        {
+            "id": 8,
+            "name": "Streamlit ML App - Sentiment Analysis & Sleep Time Prediction",
+            "description": "A Streamlit web app combining sentiment analysis and sleep time prediction ML features.",
+            "tech_stack": [
+                "Python",
+                "Streamlit",
+                "Logistic Regression",
+                "Random Forest Regressor",
+                "NLTK",
+                "GridSearchCV"
+            ],
+            "features": [
+                "Sentiment Analysis using NLTK preprocessing and Logistic Regression",
+                "Model tuning with GridSearchCV for better accuracy",
+                "Sleep Time Prediction using Random Forest Regressor",
+                "Clean, user-friendly interface"
+            ],
+            "outcome": "Demonstrates end-to-end ML pipeline building, model tuning, and deployment.",
+            "category": [
+                "Machine Learning",
+                "Data Science"
+            ]
+        }
+    ],
+    "achievements": [
+        {
+            "id": 1,
+            "event": "GEN AI Cognitive Hackathon",
+            "prize": "1st Prize",
+            "project": "StudyMate - AI Study Assistant",
+            "venue": "PSG College of Technology",
+            "date": "September 2025"
+        },
+        {
+            "id": 2,
+            "event": "CSD 24 Hour Hackathon",
+            "prize": "1st Prize",
+            "project": "AI Quiz Generator",
+            "venue": "PSG College of Technology",
+            "date": "March 2025"
+        },
+        {
+            "id": 3,
+            "event": "KGISL Coding Contest",
+            "prize": "2nd Prize",
+            "project": "Complex DSA Problem Solving",
+            "venue": "KGISL Institute",
+            "date": "October 2024"
+        },
+        {
+            "id": 4,
+            "event": "CSI Project Expo",
+            "prize": "1st Prize",
+            "project": "Museum Ticket Chatbot",
+            "venue": "PSG College of Technology",
+            "date": "April 2025"
+        },
+        {
+            "id": 5,
+            "event": "KPR Tech Auro 2.0",
+            "prize": "3rd Prize",
+            "project": "Innovative AI Solution",
+            "venue": "KPR Institute",
+            "date": "September 2025"
+        },
+        {
+            "id": 6,
+            "event": "Exodica Hackathon",
+            "prize": "1st Prize",
+            "project": "Face Album Matching",
+            "venue": "PSG College of Technology",
+            "date": "2025"
+        },
+        {
+            "id": 7,
+            "event": "Newells2K25",
+            "prize": "1st Prize",
+            "project": "AI Mock Interviewer",
+            "venue": "PSG College of Technology",
+            "date": "October 2025"
+        },
+        {
+            "id": 8,
+            "event": "IBM GenAI Hackathon",
+            "prize": "2nd Prize",
+            "project": "GenAI Solution",
+            "venue": "IBM",
+            "date": "2024"
+        },
+        {
+            "id": 9,
+            "event": "Hackovate25 Hackathon",
+            "prize": "1st Prize",
+            "project": "Hackathon Project",
+            "venue": "2025",
+            "date": "2025"
+        }
+    ],
+    "competitive_programming": {
+        "platform": "LeetCode",
+        "problems_solved": "200+",
+        "languages_used": [
+            "Python",
+            "Java"
+        ],
+        "focus_areas": [
+            "Arrays",
+            "Strings",
+            "Dynamic Programming",
+            "Recursion",
+            "Graphs",
+            "Optimization"
+        ],
+        "goal": "Strengthen foundations for coding interviews at product-based companies"
+    },
+    "leadership": [
+        {
+            "role": "Executive Member",
+            "organization": "Cloud User Club",
+            "duration": "2024 - 2025"
+        },
+        {
+            "role": "Executive Member",
+            "organization": "CSI (Computer Society of India)",
+            "duration": "2023 - 2024"
+        }
+    ],
+    "career_goals": {
+        "target_roles": [
+            "AI Engineer",
+            "Full Stack + AI Engineer"
+        ],
+        "target_companies": "Product-based companies",
+        "interests": [
+            "LLMs",
+            "RAG Systems",
+            "Multi-Agent AI",
+            "Automation",
+            "Scalable Backend Systems"
+        ],
+        "short_term_goal": "Crack top-tier company placements starting January next year",
+        "career_objective": "Eager to grow professionally in an innovative, future-focused environment while contributing to impactful projects."
+    },
+    "areas_of_interest": [
+        "Full Stack Development",
+        "Machine Learning",
+        "Generative AI"
+    ],
+    "education": [
+        {
+            "degree": "B.Tech in AI & Machine Learning",
+            "institution": "Kongu Engineering College",
+            "duration": "2023 - 2027",
+            "grade": "CGPA: 8.35 / 10",
+            "status": "Currently Pursuing"
+        },
+        {
+            "degree": "HSC (Higher Secondary Certificate)",
+            "institution": "Vidhyaa Vikas Matric Hr Sec School",
+            "graduation_date": "May 2023",
+            "grade": "90.5%"
+        },
+        {
+            "degree": "SSLC (Secondary School Leaving Certificate)",
+            "institution": "Vidhyaa Vikas Matric Hr Sec School",
+            "graduation_date": "May 2021",
+            "grade": "All Pass"
+        }
+    ]
+}

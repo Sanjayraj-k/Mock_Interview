@@ -200,32 +200,65 @@ function StudentLogin() {
 
           <form onSubmit={handleLogin} className="space-y-5">
             <div className="space-y-5">
-              {[
-                { name: "email", type: "email", placeholder: "Email Address", icon: Mail },
-                { name: "rollNo", type: "text", placeholder: "Roll Number", icon: Hash },
-                { name: "role", type: "text", placeholder: "Target Role", icon: UserCheck },
-              ].map((field, index) => (
-                <motion.div
-                  key={field.name}
-                  initial={{ opacity: 0, y: 10 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  transition={{ delay: 0.5 + index * 0.1 }}
-                  className="relative group"
-                >
-                  <div className="absolute inset-y-0 left-0 pl-4 flex items-center pointer-events-none z-10">
-                    <field.icon className="h-5 w-5 text-gray-400 group-focus-within:text-indigo-600 transition-colors duration-300" />
-                  </div>
-                  <input
-                    name={field.name}
-                    type={field.type}
-                    required
-                    className="block w-full pl-12 pr-4 py-4 bg-gray-50/50 border border-gray-200 rounded-2xl text-gray-900 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 transition-all duration-300 hover:bg-white focus:bg-white shadow-sm hover:shadow-md"
-                    placeholder={field.placeholder}
-                    value={form[field.name]}
-                    onChange={handleChange}
-                  />
-                </motion.div>
-              ))}
+              <motion.div
+                initial={{ opacity: 0, y: 10 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ delay: 0.5 }}
+                className="relative group"
+              >
+                <div className="absolute inset-y-0 left-0 pl-4 flex items-center pointer-events-none z-10">
+                  <Mail className="h-5 w-5 text-gray-400 group-focus-within:text-indigo-600 transition-colors duration-300" />
+                </div>
+                <input
+                  name="email"
+                  type="email"
+                  required
+                  className="block w-full pl-12 pr-4 py-4 bg-gray-50/50 border border-gray-200 rounded-2xl text-gray-900 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 transition-all duration-300 hover:bg-white focus:bg-white shadow-sm hover:shadow-md"
+                  placeholder="Email Address"
+                  value={form.email}
+                  onChange={handleChange}
+                />
+              </motion.div>
+
+              <motion.div
+                initial={{ opacity: 0, y: 10 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ delay: 0.6 }}
+                className="relative group"
+              >
+                <div className="absolute inset-y-0 left-0 pl-4 flex items-center pointer-events-none z-10">
+                  <Hash className="h-5 w-5 text-gray-400 group-focus-within:text-indigo-600 transition-colors duration-300" />
+                </div>
+                <input
+                  name="rollNo"
+                  type="text"
+                  required
+                  className="block w-full pl-12 pr-4 py-4 bg-gray-50/50 border border-gray-200 rounded-2xl text-gray-900 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 transition-all duration-300 hover:bg-white focus:bg-white shadow-sm hover:shadow-md"
+                  placeholder="Roll Number"
+                  value={form.rollNo}
+                  onChange={handleChange}
+                />
+              </motion.div>
+
+              <motion.div
+                initial={{ opacity: 0, y: 10 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ delay: 0.7 }}
+                className="relative group"
+              >
+                <div className="absolute inset-y-0 left-0 pl-4 flex items-center pointer-events-none z-10">
+                  <UserCheck className="h-5 w-5 text-gray-400 group-focus-within:text-indigo-600 transition-colors duration-300" />
+                </div>
+                <input
+                  name="role"
+                  type="text"
+                  required
+                  className="block w-full pl-12 pr-4 py-4 bg-gray-50/50 border border-gray-200 rounded-2xl text-gray-900 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 transition-all duration-300 hover:bg-white focus:bg-white shadow-sm hover:shadow-md"
+                  placeholder="Target Role"
+                  value={form.role}
+                  onChange={handleChange}
+                />
+              </motion.div>
 
               <motion.div
                 initial={{ opacity: 0, y: 10 }}

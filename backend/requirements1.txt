@@ -1,0 +1,9 @@
+langchain
+langchain-groq
+langchain-pinecone
+pinecone-client
+sentence-transformers
+python-dotenv
+flask
+flask-cors
+langgraph
