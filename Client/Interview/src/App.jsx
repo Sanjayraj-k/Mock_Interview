@@ -25,6 +25,7 @@ import Assistant from './pages/Assistant.jsx';
 import CompanyProfileFetcher from './student/CompanyFetch.jsx';
 import Domain from './pages/Domainforum.jsx';
 import Int from './pages/int.jsx';
+import PlacementPaperGenerator from './pages/PlacementPaperGeneration.jsx'
 // Assuming this is the question bank page
 // Assuming this is the ATS page
 // Adjusted import for clarity
@@ -84,6 +85,7 @@ function App() {
               <Route path="Assistant" element={<Assistant />} />
               <Route path="domain" element={<Domain />} />
               <Route path="companyscrap" element={<CompanyProfileFetcher />} />
+              <Route path="placement-paper" element={<PlacementPaperGenerator />} />
             </Route>
 
             {/* 4. Protected Candidate Pages */}
