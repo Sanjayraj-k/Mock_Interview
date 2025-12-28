@@ -55,9 +55,9 @@ export default function StudentDashboard() {
     if (!studentRounds) return;
 
     // Check if round is allowed
-    const roundMap = {1: "coding", 2: "aptitude", 3: "interview"};
+    const roundMap = { 1: "coding", 2: "aptitude", 3: "interview" };
     const roundName = roundMap[roundNumber];
-    
+
     if (studentRounds.restrictRounds && !studentRounds.allowedRounds.includes(roundName)) {
       alert("You are not assigned to this round. Please contact your teacher.");
       return;
@@ -72,7 +72,7 @@ export default function StudentDashboard() {
     // For teacher-assigned students, check sequential completion
     if (studentRounds.restrictRounds && studentRounds.assignedBy === "teacher") {
       const allowedRounds = studentRounds.allowedRounds;
-      
+
       // Check if previous rounds are completed (only for assigned rounds)
       if (roundNumber === 2 && allowedRounds.includes("coding") && !completedRounds.includes(1)) {
         alert("Please complete the Coding round first.");
@@ -106,24 +106,24 @@ export default function StudentDashboard() {
 
   const getRoundStatus = (roundNumber) => {
     if (!studentRounds) return 'loading';
-    
-    const roundMap = {1: "coding", 2: "aptitude", 3: "interview"};
+
+    const roundMap = { 1: "coding", 2: "aptitude", 3: "interview" };
     const roundName = roundMap[roundNumber];
-    
+
     // If round is completed
     if (completedRounds.includes(roundNumber)) {
       return 'completed';
     }
-    
+
     // If round is not allowed for teacher-assigned students
     if (studentRounds.restrictRounds && !studentRounds.allowedRounds.includes(roundName)) {
       return 'restricted';
     }
-    
+
     // For teacher-assigned students, check if previous rounds are completed
     if (studentRounds.restrictRounds && studentRounds.assignedBy === "teacher") {
       const allowedRounds = studentRounds.allowedRounds;
-      
+
       if (roundNumber === 2 && allowedRounds.includes("coding") && !completedRounds.includes(1)) {
         return 'locked';
       }
@@ -134,20 +134,20 @@ export default function StudentDashboard() {
         return 'locked';
       }
     }
-    
+
     return 'available';
   };
 
   const getRoundIcon = (roundNumber, status) => {
     const iconClass = "w-8 h-8";
-    
+
     if (status === 'completed') {
       return <CheckCircle className={`${iconClass} text-green-600`} />;
     }
     if (status === 'restricted' || status === 'locked') {
       return <Lock className={`${iconClass} text-gray-400`} />;
     }
-    
+
     switch (roundNumber) {
       case 1:
         return <Code className={`${iconClass} text-blue-600`} />;
@@ -162,7 +162,7 @@ export default function StudentDashboard() {
 
   const getRoundButtonClass = (status) => {
     const baseClass = "p-6 rounded-xl border transition-all duration-200 cursor-pointer";
-    
+
     switch (status) {
       case 'completed':
         return `${baseClass} bg-green-50 border-green-200 hover:bg-green-100`;
@@ -193,18 +193,18 @@ export default function StudentDashboard() {
 
   const getAllRoundsCompleted = () => {
     if (!studentRounds) return false;
-    
+
     if (studentRounds.restrictRounds) {
       // For teacher-assigned students, check if all assigned rounds are completed
       const assignedRoundNumbers = studentRounds.allowedRounds.map(round => {
-        switch(round) {
+        switch (round) {
           case 'coding': return 1;
           case 'aptitude': return 2;
           case 'interview': return 3;
           default: return null;
         }
       }).filter(Boolean);
-      
+
       return assignedRoundNumbers.every(roundNum => completedRounds.includes(roundNum));
     } else {
       // For HR-assigned students, check all 3 rounds
@@ -228,8 +228,8 @@ export default function StudentDashboard() {
       <div className="min-h-screen bg-gray-50 flex items-center justify-center">
         <div className="text-center">
           <p className="text-red-600 mb-4">Error: {error}</p>
-          <button 
-            onClick={() => window.location.reload()} 
+          <button
+            onClick={() => window.location.reload()}
             className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700"
           >
             Retry
@@ -246,7 +246,7 @@ export default function StudentDashboard() {
         <div className="mb-8">
           <h1 className="text-3xl font-bold text-gray-900">Student Dashboard</h1>
           <p className="text-gray-600 mt-2">
-            Welcome back, {studentData?.name}! 
+            Welcome back, {studentData?.name}!
             {studentRounds && (
               <span className="ml-2 px-2 py-1 text-xs bg-blue-100 text-blue-800 rounded-full">
                 {studentRounds.assignedBy === 'hr' ? 'HR Assigned' : 'Teacher Assigned'}
@@ -284,17 +284,16 @@ export default function StudentDashboard() {
         {/* Rounds Grid */}
         <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
           {/* Round 1: Coding */}
-          <div 
+          <div
             className={getRoundButtonClass(getRoundStatus(1))}
             onClick={() => handleRoundClick(1)}
           >
             <div className="flex items-center justify-between mb-4">
               {getRoundIcon(1, getRoundStatus(1))}
-              <span className={`text-sm font-medium px-2 py-1 rounded-full ${
-                getRoundStatus(1) === 'completed' ? 'bg-green-100 text-green-800' :
-                getRoundStatus(1) === 'available' ? 'bg-blue-100 text-blue-800' :
-                'bg-gray-100 text-gray-600'
-              }`}>
+              <span className={`text-sm font-medium px-2 py-1 rounded-full ${getRoundStatus(1) === 'completed' ? 'bg-green-100 text-green-800' :
+                  getRoundStatus(1) === 'available' ? 'bg-blue-100 text-blue-800' :
+                    'bg-gray-100 text-gray-600'
+                }`}>
                 Round 1
               </span>
             </div>
@@ -304,28 +303,26 @@ export default function StudentDashboard() {
             </p>
             <div className="flex items-center justify-between">
               <span className="text-sm text-gray-500">Duration: 60 mins</span>
-              <span className={`text-sm font-medium ${
-                getRoundStatus(1) === 'completed' ? 'text-green-600' :
-                getRoundStatus(1) === 'available' ? 'text-blue-600' :
-                'text-gray-500'
-              }`}>
+              <span className={`text-sm font-medium ${getRoundStatus(1) === 'completed' ? 'text-green-600' :
+                  getRoundStatus(1) === 'available' ? 'text-blue-600' :
+                    'text-gray-500'
+                }`}>
                 {getStatusText(getRoundStatus(1))}
               </span>
             </div>
           </div>
 
           {/* Round 2: Aptitude */}
-          <div 
+          <div
             className={getRoundButtonClass(getRoundStatus(2))}
             onClick={() => handleRoundClick(2)}
           >
             <div className="flex items-center justify-between mb-4">
               {getRoundIcon(2, getRoundStatus(2))}
-              <span className={`text-sm font-medium px-2 py-1 rounded-full ${
-                getRoundStatus(2) === 'completed' ? 'bg-green-100 text-green-800' :
-                getRoundStatus(2) === 'available' ? 'bg-purple-100 text-purple-800' :
-                'bg-gray-100 text-gray-600'
-              }`}>
+              <span className={`text-sm font-medium px-2 py-1 rounded-full ${getRoundStatus(2) === 'completed' ? 'bg-green-100 text-green-800' :
+                  getRoundStatus(2) === 'available' ? 'bg-purple-100 text-purple-800' :
+                    'bg-gray-100 text-gray-600'
+                }`}>
                 Round 2
               </span>
             </div>
@@ -335,28 +332,26 @@ export default function StudentDashboard() {
             </p>
             <div className="flex items-center justify-between">
               <span className="text-sm text-gray-500">Duration: 45 mins</span>
-              <span className={`text-sm font-medium ${
-                getRoundStatus(2) === 'completed' ? 'text-green-600' :
-                getRoundStatus(2) === 'available' ? 'text-purple-600' :
-                'text-gray-500'
-              }`}>
+              <span className={`text-sm font-medium ${getRoundStatus(2) === 'completed' ? 'text-green-600' :
+                  getRoundStatus(2) === 'available' ? 'text-purple-600' :
+                    'text-gray-500'
+                }`}>
                 {getStatusText(getRoundStatus(2))}
               </span>
             </div>
           </div>
 
           {/* Round 3: Interview */}
-          <div 
+          <div
             className={getRoundButtonClass(getRoundStatus(3))}
             onClick={() => handleRoundClick(3)}
           >
             <div className="flex items-center justify-between mb-4">
               {getRoundIcon(3, getRoundStatus(3))}
-              <span className={`text-sm font-medium px-2 py-1 rounded-full ${
-                getRoundStatus(3) === 'completed' ? 'bg-green-100 text-green-800' :
-                getRoundStatus(3) === 'available' ? 'bg-orange-100 text-orange-800' :
-                'bg-gray-100 text-gray-600'
-              }`}>
+              <span className={`text-sm font-medium px-2 py-1 rounded-full ${getRoundStatus(3) === 'completed' ? 'bg-green-100 text-green-800' :
+                  getRoundStatus(3) === 'available' ? 'bg-orange-100 text-orange-800' :
+                    'bg-gray-100 text-gray-600'
+                }`}>
                 Round 3
               </span>
             </div>
@@ -366,11 +361,10 @@ export default function StudentDashboard() {
             </p>
             <div className="flex items-center justify-between">
               <span className="text-sm text-gray-500">Duration: 30 mins</span>
-              <span className={`text-sm font-medium ${
-                getRoundStatus(3) === 'completed' ? 'text-green-600' :
-                getRoundStatus(3) === 'available' ? 'text-orange-600' :
-                'text-gray-500'
-              }`}>
+              <span className={`text-sm font-medium ${getRoundStatus(3) === 'completed' ? 'text-green-600' :
+                  getRoundStatus(3) === 'available' ? 'text-orange-600' :
+                    'text-gray-500'
+                }`}>
                 {getStatusText(getRoundStatus(3))}
               </span>
             </div>

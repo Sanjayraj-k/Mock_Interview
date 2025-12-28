@@ -1,7 +1,7 @@
 """
 Company Profile Blueprint for Flask Application
 Enhanced Company Profile Backend Server
-Workflow: User Input → Gemini (find full name) → Wikipedia → Content extraction → Gemini summarization → Frontend
+Workflow: User Input -> Groq (find full name) -> Wikipedia -> Content extraction -> Groq summarization -> Frontend
 """
 
 from flask import Blueprint, request, jsonify
@@ -10,40 +10,44 @@ import re
 import wikipedia
 import requests
 from bs4 import BeautifulSoup
-import google.generativeai as genai
+from langchain_groq import ChatGroq
+from dotenv import load_dotenv
+
+# Load environment variables
+load_dotenv()
 
 # Blueprint for Company Scrap
 companyscrap_bp = Blueprint('companyscrap', __name__, url_prefix='/companyscrap')
-
-# --- Gemini API Configuration ---
-# Securely get the API key from environment variables.
-# Get your free key from Google AI Studio: https://aistudio.google.com/app/apikey
-GEMINI_API_KEY = os.getenv("GEMINI_API_KEY", "AIzaSyAhxdn1b4o6_KglbSNg96pSJkXOdfgtcvY")
 
 # --- Global Configuration ---
 HEADERS = {
     "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36"
 }
 
-def call_gemini_model(prompt, max_tokens=250, temperature=0.8):
-    """Generic function to call the Gemini model."""
-    if not GEMINI_API_KEY:
-        print("Gemini API key not configured. Set GEMINI_API_KEY environment variable. Skipping model call.")
+def call_groq_model(prompt, max_tokens=250, temperature=0.8):
+    """Generic function to call the Groq model."""
+    if not os.getenv("GROQ_API_KEY"):
+        print("Groq API key not configured. Set GROQ_API_KEY environment variable. Skipping model call.")
         return "AI model not available. API key is missing."
 
     try:
-        genai.configure(api_key=GEMINI_API_KEY)
-        generation_config = {"temperature": temperature, "max_output_tokens": max_tokens}
-        model = genai.GenerativeModel(model_name="gemini-2.5-flash-lite", generation_config=generation_config)
-        response = model.generate_content(prompt)
-        # Clean the response to remove potential markdown formatting
-        return re.sub(r'[\*`]', '', response.text).strip()
+        # Initialize Groq Chat Model
+        llm = ChatGroq(
+            model_name="llama-3.1-8b-instant",
+            temperature=temperature,
+            max_tokens=max_tokens
+        )
+        response = llm.invoke(prompt)
+        
+        # Clean the response to remove potential markdown formatting if needed
+        # (Though ChatGroq usually returns clean text, we strip just in case)
+        return re.sub(r'[\*`]', '', response.content).strip()
     except Exception as e:
-        print(f"Error calling Gemini model: {e}")
+        print(f"Error calling Groq model: {e}")
         return None
 
 def find_full_company_name(user_input):
-    """Step 1: Use Gemini to find the full company name from user input"""
+    """Step 1: Use Groq to find the full company name from user input"""
     print(f"Finding full company name for: '{user_input}'")
     prompt = f"""
     Given the company name or ticker symbol: "{user_input}"
@@ -51,15 +55,16 @@ def find_full_company_name(user_input):
     Examples:
     - Input: "Apple" -> Output: "Apple Inc."
     - Input: "Google" -> Output: "Alphabet Inc."
-    Respond with ONLY the full company name and nothing else.
+    
+    Respond with ONLY the full company name and nothing else. Do not add any explanation.
     """
-    full_name = call_gemini_model(prompt, max_tokens=50, temperature=0.0)
+    full_name = call_groq_model(prompt, max_tokens=50, temperature=0.0)
     if full_name and full_name.strip():
         cleaned_name = full_name.replace('"', '').strip()
-        print(f"Full company name found via Gemini: {cleaned_name}")
+        print(f"Full company name found via Groq: {cleaned_name}")
         return cleaned_name
     else:
-        print(f"Gemini failed, using fallback. Using original input as full name: {user_input}")
+        print(f"Groq failed, using fallback. Using original input as full name: {user_input}")
         return user_input.strip()
 
 def extract_wikipedia_content(company_name):
@@ -101,10 +106,10 @@ def extract_relevant_text(page_content, keywords, max_length=2000):
     return " ".join(relevant_text) if relevant_text else page_content[:max_length]
 
 def summarize_with_ai(wikipedia_content, topic, company_name):
-    """Step 3 & 4: Extract relevant context and summarize with Gemini"""
+    """Step 3 & 4: Extract relevant context and summarize with Groq"""
     if not wikipedia_content["found"]:
         return None
-    print(f"Summarizing '{topic}' content for {company_name} with Gemini...")
+    print(f"Summarizing '{topic}' content for {company_name} with Groq...")
     topic_keywords = {
         "vision": ["vision", "aspiration", "future goal", "aims to"],
         "mission": ["mission", "purpose", "core values", "objective"],
@@ -133,7 +138,7 @@ def summarize_with_ai(wikipedia_content, topic, company_name):
     }
     prompt = prompts.get(topic)
     if not prompt: return f"No summarization prompt configured for topic: {topic}"
-    result = call_gemini_model(prompt, max_tokens=200, temperature=0.1)
+    result = call_groq_model(prompt, max_tokens=200, temperature=0.1)
     return result if result and result.strip() else "Information not found in the provided context."
 
 def process_company_profile(user_input):
@@ -148,7 +153,7 @@ def process_company_profile(user_input):
     }
     
     try:
-        profile["processing_steps"].append("🔍 Finding full company name with Gemini...")
+        profile["processing_steps"].append("🔍 Finding full company name with Groq...")
         full_name = find_full_company_name(user_input)
         profile["full_company_name"] = full_name
         profile["processing_steps"].append(f"✅ Full name identified: {full_name}")
@@ -221,7 +226,7 @@ def health_check():
     return jsonify({
         'status': 'healthy',
         'message': 'Company Scrap service is running',
-        'gemini_configured': bool(GEMINI_API_KEY)
+        'groq_configured': bool(os.getenv("GROQ_API_KEY"))
     }), 200
 
 @companyscrap_bp.route('/', methods=['GET'])
@@ -236,10 +241,10 @@ def index():
             'GET /': 'This documentation'
         },
         'workflow': [
-            'User Input → Gemini (find full name)',
+            'User Input -> Groq (find full name)',
             'Extract content from Wikipedia',
             'Extract topic-specific text from Wikipedia content',
-            'Gemini summarizes each topic (Vision, Mission, Founder, HQ, etc.)',
+            'Groq summarizes each topic (Vision, Mission, Founder, HQ, etc.)',
             'Structured JSON response sent to frontend'
         ]
     }), 200

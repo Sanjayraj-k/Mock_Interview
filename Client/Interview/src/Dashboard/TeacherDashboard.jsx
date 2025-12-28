@@ -47,8 +47,8 @@ export default function TeacherDashboard() {
       const response = await fetch('http://localhost:5000/api/students', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ 
-          ...newStudent, 
+        body: JSON.stringify({
+          ...newStudent,
           teacherEmail: teacherData.email,
           // Convert round selection to array format
           assignedRounds: newStudent.assignedRounds
@@ -100,7 +100,7 @@ export default function TeacherDashboard() {
 
   const handleRoundSelection = (roundType, isChecked) => {
     let updatedRounds = [...newStudent.assignedRounds];
-    
+
     if (roundType === 'coding') {
       if (isChecked && !updatedRounds.includes('coding')) {
         updatedRounds.push('coding');
@@ -137,7 +137,7 @@ export default function TeacherDashboard() {
   const getRoundDisplayText = (rounds) => {
     if (!rounds || rounds.length === 0) return 'No rounds assigned';
     return rounds.map(round => {
-      switch(round) {
+      switch (round) {
         case 'coding': return 'Coding';
         case 'aptitude': return 'Aptitude';
         case 'interview': return 'Interview';
@@ -225,10 +225,10 @@ export default function TeacherDashboard() {
 
 const DashboardContent = ({ students }) => {
   const totalStudents = students.length;
-  const codingOnlyStudents = students.filter(s => 
+  const codingOnlyStudents = students.filter(s =>
     s.assignedRounds && s.assignedRounds.length === 1 && s.assignedRounds.includes('coding')
   ).length;
-  const allRoundsStudents = students.filter(s => 
+  const allRoundsStudents = students.filter(s =>
     s.assignedRounds && s.assignedRounds.length === 3
   ).length;
 
@@ -236,7 +236,7 @@ const DashboardContent = ({ students }) => {
     <div>
       <h2 className="text-2xl font-bold text-gray-900 mb-2">Dashboard Overview</h2>
       <p className="text-gray-600 mb-6">Your personal overview of students and their assigned rounds.</p>
-      
+
       <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
         <div className="bg-white p-6 rounded-xl shadow-sm border">
           <div className="flex items-center justify-between">
@@ -249,7 +249,7 @@ const DashboardContent = ({ students }) => {
             </div>
           </div>
         </div>
-        
+
         <div className="bg-white p-6 rounded-xl shadow-sm border">
           <div className="flex items-center justify-between">
             <div>
@@ -261,7 +261,7 @@ const DashboardContent = ({ students }) => {
             </div>
           </div>
         </div>
-        
+
         <div className="bg-white p-6 rounded-xl shadow-sm border">
           <div className="flex items-center justify-between">
             <div>
@@ -278,20 +278,20 @@ const DashboardContent = ({ students }) => {
   );
 };
 
-const StudentsContent = ({ 
-  students, 
-  newStudent, 
-  setNewStudent, 
-  handleAddStudent, 
-  handleFileUpload, 
-  selectedFile, 
-  setSelectedFile, 
+const StudentsContent = ({
+  students,
+  newStudent,
+  setNewStudent,
+  handleAddStudent,
+  handleFileUpload,
+  selectedFile,
+  setSelectedFile,
   handleRoundSelection,
-  getRoundDisplayText 
+  getRoundDisplayText
 }) => (
   <div>
     <h2 className="text-2xl font-bold text-gray-900 mb-6">Student Management</h2>
-    
+
     <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
       {/* Add Student Form */}
       <div className="lg:col-span-1">
@@ -309,7 +309,7 @@ const StudentsContent = ({
                 required
               />
             </div>
-            
+
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-1">Email Address</label>
               <input
@@ -321,7 +321,7 @@ const StudentsContent = ({
                 required
               />
             </div>
-            
+
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-1">Roll Number</label>
               <input
@@ -333,7 +333,7 @@ const StudentsContent = ({
                 required
               />
             </div>
-            
+
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-1">Role</label>
               <select
@@ -346,7 +346,7 @@ const StudentsContent = ({
                 <option value="MockInterview">Mock Interview</option>
               </select>
             </div>
-            
+
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-2">Assign Rounds</label>
               <div className="space-y-2">
@@ -359,7 +359,7 @@ const StudentsContent = ({
                   />
                   <span className="text-sm text-gray-700">Coding Round</span>
                 </label>
-                
+
                 <label className="flex items-center">
                   <input
                     type="checkbox"
@@ -369,7 +369,7 @@ const StudentsContent = ({
                   />
                   <span className="text-sm text-gray-700">Aptitude Round</span>
                 </label>
-                
+
                 <label className="flex items-center">
                   <input
                     type="checkbox"
@@ -384,7 +384,7 @@ const StudentsContent = ({
                 Selected: {getRoundDisplayText(newStudent.assignedRounds)}
               </p>
             </div>
-            
+
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-1">Set Password</label>
               <input
@@ -396,7 +396,7 @@ const StudentsContent = ({
                 required
               />
             </div>
-            
+
             <button
               type="submit"
               className="w-full bg-gradient-to-r from-yellow-500 to-orange-600 text-white py-2.5 rounded-lg font-medium hover:from-yellow-600 hover:to-orange-700 transition-all duration-200 flex items-center justify-center space-x-2"
@@ -441,7 +441,7 @@ const StudentsContent = ({
           <div className="px-6 py-4 border-b border-gray-200">
             <h3 className="text-lg font-semibold text-gray-900">Students List</h3>
           </div>
-          
+
           <div className="overflow-x-auto">
             <table className="min-w-full divide-y divide-gray-200">
               <thead className="bg-gray-50">
@@ -476,21 +476,21 @@ const StudentsContent = ({
                             {round.charAt(0).toUpperCase() + round.slice(1)}
                           </span>
                         )) || (
-                          <span className="px-2 py-1 text-xs font-medium rounded-full bg-gray-100 text-gray-800">
-                            No rounds assigned
-                          </span>
-                        )}
+                            <span className="px-2 py-1 text-xs font-medium rounded-full bg-gray-100 text-gray-800">
+                              No rounds assigned
+                            </span>
+                          )}
                       </div>
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap text-sm font-medium">
                       <div className="flex space-x-2">
-                        <button 
+                        <button
                           className="p-2 text-gray-500 hover:bg-gray-200 rounded-full transition-colors"
                           title="Edit Student"
                         >
                           <Edit3 className="w-4 h-4" />
                         </button>
-                        <button 
+                        <button
                           className="p-2 text-red-500 hover:bg-red-100 rounded-full transition-colors"
                           title="Delete Student"
                         >

@@ -36,14 +36,6 @@ const StudentLandingPage = () => {
       path: '/student/questionforum'
     },
     {
-      id: 'quiz',
-      title: 'AI Mock Quiz',
-      description: 'Take comprehensive quizzes to test your knowledge and get instant AI-powered feedback',
-      icon: '🧠⚡',
-      color: 'from-purple-400 to-pink-500',
-      path: '/student/upload'
-    },
-    {
       id: 'practicequiz',
       title: 'Practice Quiz Generator',
       description: 'Generate custom quizzes from PDFs, YouTube videos, or audio files using AI',
@@ -74,8 +66,15 @@ const StudentLandingPage = () => {
       icon: '🏢🔍',
       color: 'from-indigo-400 to-blue-500',
       path: '/student/companyscrap'
+    },
+    {
+      id: 'placementpaper',
+      title: 'Placement Paper Finder',
+      description: 'Generate and practice with AI-generated placement papers for top companies',
+      icon: '📝🔍',
+      color: 'from-pink-400 to-rose-500',
+      path: '/student/placement-paper'
     }
-
   ];
 
   return (
@@ -103,9 +102,8 @@ const StudentLandingPage = () => {
           {cards.map((card) => (
             <div
               key={card.id}
-              className={`group relative overflow-hidden rounded-3xl shadow-xl transition-all duration-500 cursor-pointer ${
-                hoveredCard === card.id ? 'scale-105 shadow-2xl' : 'hover:scale-102'
-              }`}
+              className={`group relative overflow-hidden rounded-3xl shadow-xl transition-all duration-500 cursor-pointer ${hoveredCard === card.id ? 'scale-105 shadow-2xl' : 'hover:scale-102'
+                }`}
               onMouseEnter={() => setHoveredCard(card.id)}
               onMouseLeave={() => setHoveredCard(null)}
               onClick={() => handleNavigation(card.path)}
@@ -128,17 +126,17 @@ const StudentLandingPage = () => {
                 <div className={`inline-flex items-center px-6 py-3 rounded-full bg-gradient-to-r ${card.color} text-white font-semibold shadow-lg group-hover:shadow-xl transform group-hover:-translate-y-1 transition-all duration-300`}>
                   <span className="mr-2">Get Started</span>
                   <span className="transform group-hover:translate-x-1 transition-transform duration-300">→</span>
-                </div>
-              </div>
+                </div >
+              </div >
               <div className="absolute top-4 right-4 w-16 h-16 bg-white bg-opacity-20 rounded-full blur-xl group-hover:bg-opacity-30 transition-all duration-500"></div>
               <div className="absolute bottom-4 left-4 w-12 h-12 bg-white bg-opacity-10 rounded-full blur-lg group-hover:bg-opacity-20 transition-all duration-500"></div>
-            </div>
+            </div >
           ))}
-        </div>
-      </div>
+        </div >
+      </div >
 
       {/* Footer */}
-      <footer className="bg-white bg-opacity-80 backdrop-blur-lg border-t border-gray-200 text-center py-12 px-4 mt-16">
+      < footer className="bg-white bg-opacity-80 backdrop-blur-lg border-t border-gray-200 text-center py-12 px-4 mt-16" >
         <div className="max-w-4xl mx-auto">
           <h3 className="text-2xl font-bold text-gray-800 mb-3">
             Start your journey to interview success today
@@ -150,8 +148,8 @@ const StudentLandingPage = () => {
             © 2024 AI Interview Platform. All rights reserved.
           </p>
         </div>
-      </footer>
-    </div>
+      </footer >
+    </div >
   );
 };
 
