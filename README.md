@@ -1614,7 +1614,7 @@ If you find MockAI useful, please:
 
 <div align="center">
 
-### **Built with ❤️ by Sanjay K**
+### **Built by Sanjay & Shimal**
 
 [![GitHub followers](https://img.shields.io/github/followers/Sanjayraj-k?style=social)](https://github.com/Sanjayraj-k)
 [![GitHub stars](https://img.shields.io/github/stars/Sanjayraj-k/Mock_Interview?style=social)](https://github.com/Sanjayraj-k/Mock_Interview/stargazers)
