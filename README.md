@@ -1543,12 +1543,12 @@ We welcome contributions from the community! Here's how you can help:
 
 ## 📄 License
 
-This project is licensed under the **MIT License** - see the [LICENSE](LICENSE) file for details.
+This project is licensed under the **MIT License**.
 
 ```
 MIT License
 
-Copyright (c) 2024 Sanjay K
+Copyright (c) 2026 Sanjayraj K & Shimal 
 
 Permission is hereby granted, free of charge, to any person obtaining a copy
 of this software and associated documentation files (the "Software"), to deal
@@ -1571,16 +1571,23 @@ SOFTWARE.
 
 ---
 
-## 👤 Author & Contact
+## 👨‍💻 Meet the Team
 
-### **Sanjay K**
-*Full Stack Developer & AI/ML Enthusiast*
+<div align="center">
 
-🌐 **GitHub**: [@Sanjayraj-k](https://github.com/Sanjayraj-k)  
-📧 **Email**: [your.email@example.com](mailto:your.email@example.com)  
-💼 **LinkedIn**: [linkedin.com/in/sanjay-k](https://www.linkedin.com/in/sanjay-k)  
-🐦 **Twitter**: [@sanjay_k](https://twitter.com/sanjay_k)  
-🌍 **Portfolio**: [sanjay-k.dev](https://sanjay-k.dev)
+### 🚀 **Sanjay K**
+[![GitHub](https://img.shields.io/badge/GitHub-Sanjayraj--k-181717?style=for-the-badge&logo=github)](https://github.com/Sanjayraj-k)
+[![LinkedIn](https://img.shields.io/badge/LinkedIn-sanjayraj--k-0077B5?style=for-the-badge&logo=linkedin)](https://linkedin.com/in/sanjayraj-k)
+
+---
+
+### 💡 **Shimal Akmal**
+[![GitHub](https://img.shields.io/badge/GitHub-Shimal007-181717?style=for-the-badge&logo=github)](https://github.com/Shimal007)
+[![LinkedIn](https://img.shields.io/badge/LinkedIn-shimal--akmal-0077B5?style=for-the-badge&logo=linkedin)](https://www.linkedin.com/in/shimal-akmal/)
+
+</div>
+
+---
 
 ### **🙏 Acknowledgments**
 
