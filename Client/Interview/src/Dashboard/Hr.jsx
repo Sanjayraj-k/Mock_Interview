@@ -266,7 +266,7 @@ const TestResultsModal = ({ role, results, loading, onClose }) => {
   
   // --- Summary Card Data Calculation ---
   const totalParticipants = results.length;
-  const totalPossibleScore = 15; // Assuming 5 points per round (5+5+5)
+  const totalPossibleScore = 145; // 15 (Round 1) + 30 (Round 2) + 50 (Round 3) + 50 (Round 4)
   
   const averageTotalScore = totalParticipants > 0
     ? results.reduce((sum, r) => sum + (r.total_score || 0), 0) / totalParticipants
@@ -280,8 +280,8 @@ const TestResultsModal = ({ role, results, loading, onClose }) => {
     ? Math.max(...results.map(r => r.max_round || 0))
     : 0;
 
-  // Example: Placed if total score >= 7
-  const placedStudents = results.filter(r => (r.total_score || 0) >= 7).length; 
+  // Placed if total score >= 70 (approx 48% of total score)
+  const placedStudents = results.filter(r => (r.total_score || 0) >= 70).length; 
 
   // --- Event Handler for Email Button ---
   const handleEmailStudent = (studentEmail) => {
@@ -353,6 +353,7 @@ const TestResultsModal = ({ role, results, loading, onClose }) => {
                         <th className="px-6 py-3 text-center text-xs font-medium text-gray-500 uppercase">Round 1</th>
                         <th className="px-6 py-3 text-center text-xs font-medium text-gray-500 uppercase">Round 2</th>
                         <th className="px-6 py-3 text-center text-xs font-medium text-gray-500 uppercase">Round 3</th>
+                        <th className="px-6 py-3 text-center text-xs font-medium text-gray-500 uppercase">Round 4</th>
                         <th className="px-6 py-3 text-center text-xs font-medium text-gray-500 uppercase">Total Score</th>
                         <th className="px-6 py-3 text-center text-xs font-medium text-gray-500 uppercase">Actions</th>
                       </tr>
@@ -369,10 +370,11 @@ const TestResultsModal = ({ role, results, loading, onClose }) => {
                             </div>
                           </td>
                           <td className="px-6 py-4 whitespace-nowrap text-gray-900">{result.rollNo || 'N/A'}</td>
-                          <td className="px-6 py-4 whitespace-nowrap text-center text-gray-700">{result.round1_score ?? '—'}</td>
-                          <td className="px-6 py-4 whitespace-nowrap text-center text-gray-700">{result.round2_score ?? '—'}</td>
-                          <td className="px-6 py-4 whitespace-nowrap text-center text-gray-700">{result.round3_score ?? '—'}</td>
-                          <td className="px-6 py-4 whitespace-nowrap text-center font-bold text-lg text-blue-600">{result.total_score}</td>
+                          <td className="px-6 py-4 whitespace-nowrap text-center text-gray-700">{result.round1_score !== null ? `${result.round1_score}/15` : '—'}</td>
+                          <td className="px-6 py-4 whitespace-nowrap text-center text-gray-700">{result.round2_score !== null ? `${result.round2_score}/30` : '—'}</td>
+                          <td className="px-6 py-4 whitespace-nowrap text-center text-gray-700">{result.round3_score !== null ? `${result.round3_score}/50` : '—'}</td>
+                          <td className="px-6 py-4 whitespace-nowrap text-center text-gray-700">{result.round4_score !== null ? `${result.round4_score}/50` : '—'}</td>
+                          <td className="px-6 py-4 whitespace-nowrap text-center font-bold text-lg text-blue-600">{result.total_score}/145</td>
                           <td className="px-6 py-4 whitespace-nowrap text-center">
                             <button
                               onClick={() => handleEmailStudent(result.email)}

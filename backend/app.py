@@ -11,6 +11,8 @@ import json
 app = Flask(__name__)
 # This allows your React app at localhost:5173 to communicate with your Flask server
 import os
+from dotenv import load_dotenv
+load_dotenv()
 from flask_cors import CORS
 from pymongo import MongoClient
 from aiassistant import aiassistant_bp
@@ -22,6 +24,7 @@ from questionbank import questionbank_bp, init_questionbank, initialize_database
 from companyscrap_bp import companyscrap_bp
 from Domainforum import domainforum_bp, init_domainforum
 from practicequiz_bp import practicequiz_bp
+from hrround import hrround_bp
 
 # --- CORS & Session setup ---
 app.secret_key = os.environ.get("FLASK_SECRET_KEY", "dev-secret-key")
@@ -37,6 +40,7 @@ app.register_blueprint(questionbank_bp)
 app.register_blueprint(companyscrap_bp)
 app.register_blueprint(domainforum_bp)
 app.register_blueprint(practicequiz_bp)
+app.register_blueprint(hrround_bp)
 
 # Initialize services that require app context
 with app.app_context():
@@ -412,6 +416,49 @@ def submit_round3_results():
         app.logger.error(f"Submit round 3 results error: {e}")
         return jsonify({"error": "An internal server error occurred"}), 500
 
+@app.route('/api/round4/results', methods=['POST'])
+def submit_round4_results():
+    """Stores round 4 (HR behavioral) results for a candidate."""
+    try:
+        data = request.get_json()
+        candidateId = data.get("candidateId")
+        candidateEmail = data.get("candidateEmail")
+        candidateRoll = data.get("candidateRoll")
+        CandidateRollno = data.get("CandidateRollno")
+        submissionDate = data.get("submissionDate")
+        score = data.get("score")
+        totalScore = data.get("totalScore")
+
+        # Validate required fields
+        required_fields = ["candidateId", "candidateEmail", "candidateRoll", "CandidateRollno", "submissionDate", "score", "totalScore"]
+        if not all(field in data for field in required_fields):
+            return jsonify({"error": f"Missing required fields: {required_fields}"}), 400
+
+        # Prepare round 4 result document
+        round4_result = {
+            "candidateId": candidateId,
+            "candidateEmail": candidateEmail,
+            "candidateRoll": candidateRoll,
+            "CandidateRollno": CandidateRollno,
+            "submissionDate": submissionDate,
+            "round": 4,
+            "score": int(score),
+            "totalScore": int(totalScore),
+            "submittedAt": datetime.utcnow()
+        }
+
+        # Insert into quiz_results collection
+        result = db.quiz_results.insert_one(round4_result)
+        round4_result['_id'] = str(result.inserted_id)
+
+        return jsonify({
+            "message": "Round 4 (HR) results stored successfully",
+            "round4_result": round4_result
+        }), 201
+    except Exception as e:
+        app.logger.error(f"Submit round 4 results error: {e}")
+        return jsonify({"error": "An internal server error occurred"}), 500
+
 @app.route('/api/test-results', methods=['GET'])
 def get_test_results():
     """
@@ -449,6 +496,7 @@ def get_test_results():
                     "round1_score": None,
                     "round2_score": None,
                     "round3_score": None,
+                    "round4_score": None,
                     "total_score": 0,
                     "max_round": 0,
                     "submissions": []
@@ -464,6 +512,8 @@ def get_test_results():
                 aggregated_results[email]['round2_score'] = score
             elif round_num == 3:
                 aggregated_results[email]['round3_score'] = score
+            elif round_num == 4:
+                aggregated_results[email]['round4_score'] = score
             
             # Keep track of the highest round completed and submissions
             if round_num and round_num > aggregated_results[email]['max_round']:
@@ -478,7 +528,7 @@ def get_test_results():
         final_results = []
         for email, data in aggregated_results.items():
             # Calculate total score
-            data['total_score'] = sum(filter(None, [data['round1_score'], data['round2_score'], data['round3_score']]))
+            data['total_score'] = sum(filter(None, [data['round1_score'], data['round2_score'], data['round3_score'], data['round4_score']]))
             # Find the last submission time
             data['lastSubmittedAt'] = max(data['submissions']) if data['submissions'] else None
             del data['submissions'] # Clean up temporary field

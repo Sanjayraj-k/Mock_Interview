@@ -3,12 +3,27 @@ import React, { createContext, useState, useEffect } from 'react';
 export const AuthContext = createContext();
 
 export const AuthProvider = ({ children }) => {
-  const [isHRAuthenticated, setIsHRAuthenticated] = useState(false);
-  const [hrData, setHRData] = useState(null);
-  const [isCandidateAuthenticated, setIsCandidateAuthenticated] = useState(false);
-  const [candidateData, setCandidateData] = useState(null);
-  const [isTeacherAuthenticated, setIsTeacherAuthenticated] = useState(false); // New: Teacher auth state
-  const [teacherData, setTeacherData] = useState(null); // New: Teacher data state
+  const [isHRAuthenticated, setIsHRAuthenticated] = useState(() => {
+    return !!localStorage.getItem('hr');
+  });
+  const [hrData, setHRData] = useState(() => {
+    const stored = localStorage.getItem('hr');
+    return stored ? JSON.parse(stored) : null;
+  });
+  const [isCandidateAuthenticated, setIsCandidateAuthenticated] = useState(() => {
+    return !!localStorage.getItem('candidate');
+  });
+  const [candidateData, setCandidateData] = useState(() => {
+    const stored = localStorage.getItem('candidate');
+    return stored ? JSON.parse(stored) : null;
+  });
+  const [isTeacherAuthenticated, setIsTeacherAuthenticated] = useState(() => {
+    return !!localStorage.getItem('teacher');
+  });
+  const [teacherData, setTeacherData] = useState(() => {
+    const stored = localStorage.getItem('teacher');
+    return stored ? JSON.parse(stored) : null;
+  });
 
   // HR Login Logic
   const handleHRLogin = (data) => {

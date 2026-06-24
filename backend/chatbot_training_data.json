@@ -25,7 +25,7 @@
             "degree": "B.Tech in AI & Machine Learning",
             "institution": "Kongu Engineering College",
             "duration": "2023 - 2027",
-            "grade": "CGPA: 8.35 / 10",
+            "grade/cgba": "CGPA: 8.19 / 10",
             "status": "Currently Pursuing"
         },
         {
@@ -406,11 +406,43 @@
             "project": "Hackathon Project",
             "venue": "2025",
             "date": "2025"
+        },
+        {
+            "id": 10,
+            "event": "CSI 24 Hour Hackathon",
+            "prize": "1st Prize",
+            "project": "Cyber Security In Email",
+            "venue": "2026",
+            "date": "2026"
+        },
+        {
+            "id": 11,
+            "event": "HCS Coding Challenge",
+            "prize": "2st Prize",
+            "project": "Hackathon Project",
+            "venue": "2026",
+            "date": "2026"
+        },
+        {
+            "id": 12,
+            "event": "Eareyes 2k26",
+            "prize": "1st Prize",
+            "project": "paper presentation and project presentation",
+            "venue": "2026",
+            "date": "2026"
+        },
+        {
+            "id": 13,
+            "event": "GEG",
+            "prize": "1st Prize",
+            "project": "paper presentation",
+            "venue": "2026",
+            "date": "2026"
         }
     ],
     "competitive_programming": {
         "platform": "LeetCode",
-        "problems_solved": "200+",
+        "problems_solved": "400+",
         "languages_used": [
             "Python",
             "Java"
@@ -456,27 +488,6 @@
     "areas_of_interest": [
         "Full Stack Development",
         "Machine Learning",
-        "Generative AI"
-    ],
-    "education": [
-        {
-            "degree": "B.Tech in AI & Machine Learning",
-            "institution": "Kongu Engineering College",
-            "duration": "2023 - 2027",
-            "grade": "CGPA: 8.35 / 10",
-            "status": "Currently Pursuing"
-        },
-        {
-            "degree": "HSC (Higher Secondary Certificate)",
-            "institution": "Vidhyaa Vikas Matric Hr Sec School",
-            "graduation_date": "May 2023",
-            "grade": "90.5%"
-        },
-        {
-            "degree": "SSLC (Secondary School Leaving Certificate)",
-            "institution": "Vidhyaa Vikas Matric Hr Sec School",
-            "graduation_date": "May 2021",
-            "grade": "All Pass"
-        }
+        "Agentic AI"
     ]
 }

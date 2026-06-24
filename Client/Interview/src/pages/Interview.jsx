@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { 
   Camera, 
   Monitor, 
@@ -185,6 +186,7 @@ export default function InterviewDashboard() {
   const [interviewStarted, setInterviewStarted] = useState(false);
   const [evaluation, setEvaluation] = useState('');
   const [error, setError] = useState('');
+  const navigate = useNavigate();
   
   const recognitionRef = useRef(null);
   const apiUrl = 'http://localhost:5000/interview/api';
@@ -442,12 +444,18 @@ export default function InterviewDashboard() {
 
           <div className="mt-12 text-center">
             <h4 className="text-2xl font-light text-gray-600 mb-4">
-              Thank you for participating!
+              Technical Round Complete!
             </h4>
-            <p className="text-gray-500 max-w-md mx-auto">
-              We appreciate the time and effort you've put into this Mock interview process.
-              Wishing you the best in your career journey!
+            <p className="text-gray-500 max-w-md mx-auto mb-8">
+              You have one more round remaining — the HR Behavioral Interview.
+              Click below to proceed to Round 4.
             </p>
+            <button
+              onClick={() => navigate('/hrround')}
+              className="px-8 py-4 bg-gradient-to-r from-amber-500 to-orange-500 text-white rounded-xl font-semibold text-lg hover:scale-105 transition-all duration-200 shadow-lg shadow-amber-500/25"
+            >
+              Proceed to HR Round →
+            </button>
             <div className="mt-6">
               <div className="h-px bg-gradient-to-r from-transparent via-gray-300 to-transparent w-full max-w-xs mx-auto" />
             </div>

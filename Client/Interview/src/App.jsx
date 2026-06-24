@@ -13,6 +13,7 @@ import GoogleFormWithWebcam from './pages/GoogleForm.jsx';
 import WebCam from './pages/webCam.jsx'; // Adjusted extension for consistency
 import Round1 from './pages/Round1.jsx';
 import Interview from './pages/Interview.jsx'; // Assuming this is the interview page
+import Hrround from './pages/Hrround.jsx'; // HR Behavioral Interview Round 4
 import Uploadpage from './pages/UploadPage.jsx'; // Assuming this is the upload page
 import Ats from './pages/Ats.jsx';
 import Upload from './student/Upload.jsx'
@@ -154,6 +155,12 @@ function App() {
                 <Interview />
               </ProtectedCandidateRoute>
 
+            } />
+
+            <Route path="/hrround" element={
+              <ProtectedCandidateRoute>
+                <Hrround />
+              </ProtectedCandidateRoute>
             } />
 
             {/* 5. Fallback Route - Redirects any unknown URL to the landing page */}

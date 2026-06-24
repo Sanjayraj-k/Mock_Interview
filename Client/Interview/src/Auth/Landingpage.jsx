@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { Star, ArrowRight } from 'lucide-react';
 import teacher from '../images/teacher.png';
-import student from '../images/student.png';
+
 import candidate from '../images/candidate.png';
 
 export default function LandingPage() {
@@ -21,10 +21,10 @@ export default function LandingPage() {
             <div className="h-16 bg-gradient-to-r from-gray-200 to-gray-300 rounded-2xl w-4/5 mx-auto animate-pulse"></div>
             <div className="h-6 bg-gradient-to-r from-gray-100 to-gray-200 rounded-xl w-2/5 mx-auto animate-pulse"></div>
           </div>
-          
+
           {/* Cards Skeleton */}
-          <div className="grid grid-cols-1 lg:grid-cols-3 gap-10">
-            {[1, 2, 3].map((item) => (
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-10">
+            {[1, 2].map((item) => (
               <div key={item} className="bg-white p-10 rounded-3xl shadow-lg">
                 <div className="flex flex-col items-center text-center space-y-8">
                   <div className="h-32 w-32 bg-gradient-to-br from-gray-200 to-gray-300 rounded-3xl animate-pulse"></div>
@@ -61,23 +61,23 @@ export default function LandingPage() {
             <span className="text-sm font-medium text-gray-700">AI-Powered Interview Excellence</span>
             <Star className="w-5 h-5 text-yellow-500 fill-current" />
           </div>
-          
-            <h1 className="text-3xl lg:text-5xl font-black text-gray-900 mb-6 leading-tight">
-              <span className="bg-clip-text text-transparent bg-gradient-to-r from-indigo-600 via-purple-600 to-pink-600 animate-pulse">
-              AI Mock Interview
-              </span>
-            <br />
-        <span className="text-gray-800">Platform</span>
-  </h1>
 
-          
+          <h1 className="text-3xl lg:text-5xl font-black text-gray-900 mb-6 leading-tight">
+            <span className="bg-clip-text text-transparent bg-gradient-to-r from-indigo-600 via-purple-600 to-pink-600 animate-pulse">
+              AI Mock Interview
+            </span>
+            <br />
+            <span className="text-gray-800">Platform</span>
+          </h1>
+
+
           <p className="text-xl text-gray-600 max-w-2xl mx-auto leading-relaxed relative">
             Transform your interview experience with cutting-edge AI technology
             <span className="absolute -bottom-2 left-1/2 transform -translate-x-1/2 w-24 h-1 bg-gradient-to-r from-indigo-400 to-purple-400 rounded-full"></span>
           </p>
         </div>
         {/* Portal Cards */}
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-8 w-full max-w-7xl">
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-8 w-full max-w-5xl">
           {/* HR Portal Card */}
           <button
             onClick={() => window.location.href = '/hr/login'}
@@ -86,11 +86,11 @@ export default function LandingPage() {
             {/* Animated Background */}
             <div className="absolute inset-0 bg-gradient-to-br from-purple-500/5 via-indigo-500/5 to-blue-500/5 opacity-0 group-hover:opacity-100 transition-all duration-700"></div>
             <div className="absolute inset-0 bg-gradient-to-r from-purple-500/10 to-indigo-500/10 opacity-0 group-hover:opacity-100 transition-all duration-1000 delay-300"></div>
-            
+
             {/* Floating Particles Effect */}
             <div className="absolute top-4 right-4 w-2 h-2 bg-purple-400 rounded-full opacity-0 group-hover:opacity-100 animate-bounce transition-opacity duration-500 delay-200"></div>
             <div className="absolute top-8 right-8 w-1 h-1 bg-indigo-400 rounded-full opacity-0 group-hover:opacity-100 animate-ping transition-opacity duration-500 delay-400"></div>
-            
+
             <div className="relative z-10 flex flex-col items-center text-center">
               {/* Large Image Container */}
               <div className="relative mb-8 group-hover:scale-110 transition-transform duration-500">
@@ -101,17 +101,17 @@ export default function LandingPage() {
               </div>
 
               <h2 className="text-3xl font-bold text-gray-800 mb-4 relative">
-                Teacher
+                HR
                 <span className="absolute -bottom-1 left-1/2 transform -translate-x-1/2 w-0 h-0.5 bg-gradient-to-r from-purple-500 to-indigo-600 group-hover:w-full transition-all duration-500"></span>
               </h2>
-              
+
               <p className="text-gray-600 mb-8 leading-relaxed text-lg">
                 Manage job roles, review interviews, and analyze Student performance with powerful AI insights and analytics.
               </p>
-              
+
               <div className="w-full bg-gradient-to-r from-purple-500 to-indigo-600 text-white py-4 px-6 rounded-2xl font-semibold text-lg group-hover:from-purple-600 group-hover:to-indigo-700 transition-all duration-500 shadow-lg group-hover:shadow-xl relative overflow-hidden">
                 <span className="relative z-10 flex items-center justify-center gap-2">
-                  Teacher Portal
+                  HR Portal
                   <ArrowRight className="w-5 h-5 transform group-hover:translate-x-1 transition-transform duration-300" />
                 </span>
                 <div className="absolute inset-0 bg-gradient-to-r from-white/10 to-white/20 opacity-0 group-hover:opacity-100 transition-opacity duration-500"></div>
@@ -119,46 +119,6 @@ export default function LandingPage() {
             </div>
           </button>
 
-          {/* Student Portal Card */}
-          <button
-            onClick={() => window.location.href = '/student/landing'}
-            className="group relative bg-white/80 backdrop-blur-sm p-8 rounded-3xl shadow-xl hover:shadow-2xl transform hover:-translate-y-3 transition-all duration-700 border border-white/20 hover:border-emerald-200/50 overflow-hidden w-full"
-          >
-            {/* Animated Background */}
-            <div className="absolute inset-0 bg-gradient-to-br from-emerald-500/5 via-teal-500/5 to-cyan-500/5 opacity-0 group-hover:opacity-100 transition-all duration-700"></div>
-            <div className="absolute inset-0 bg-gradient-to-r from-emerald-500/10 to-teal-500/10 opacity-0 group-hover:opacity-100 transition-all duration-1000 delay-300"></div>
-            
-            {/* Floating Particles Effect */}
-            <div className="absolute top-4 right-4 w-2 h-2 bg-emerald-400 rounded-full opacity-0 group-hover:opacity-100 animate-bounce transition-opacity duration-500 delay-200"></div>
-            <div className="absolute top-8 right-8 w-1 h-1 bg-teal-400 rounded-full opacity-0 group-hover:opacity-100 animate-ping transition-opacity duration-500 delay-400"></div>
-            
-            <div className="relative z-10 flex flex-col items-center text-center">
-              {/* Large Image Container */}
-              <div className="relative mb-8 group-hover:scale-110 transition-transform duration-500">
-                <div className="w-32 h-32 bg-gradient-to-br from-emerald-500/10 to-teal-600/10 rounded-3xl flex items-center justify-center shadow-lg group-hover:shadow-xl transition-all duration-500 p-4">
-                  <img src={student} alt="Student Portal" className="w-24 h-24 object-contain" />
-                </div>
-                <div className="absolute inset-0 bg-gradient-to-br from-emerald-400/20 to-teal-500/20 rounded-3xl blur-lg opacity-0 group-hover:opacity-50 transition-opacity duration-500"></div>
-              </div>
-
-              <h2 className="text-3xl font-bold text-gray-800 mb-4 relative">
-                Student Pratice
-                <span className="absolute -bottom-1 left-1/2 transform -translate-x-1/2 w-0 h-0.5 bg-gradient-to-r from-emerald-500 to-teal-600 group-hover:w-full transition-all duration-500"></span>
-              </h2>
-              
-              <p className="text-gray-600 mb-8 leading-relaxed text-lg">
-                Access exclusive student resources, practice interviews, and build confidence for your career journey.
-              </p>
-              
-              <div className="w-full bg-gradient-to-r from-emerald-500 to-teal-600 text-white py-4 px-6 rounded-2xl font-semibold text-lg group-hover:from-emerald-600 group-hover:to-teal-700 transition-all duration-500 shadow-lg group-hover:shadow-xl relative overflow-hidden">
-                <span className="relative z-10 flex items-center justify-center gap-2">
-                  Student Portal
-                  <ArrowRight className="w-5 h-5 transform group-hover:translate-x-1 transition-transform duration-300" />
-                </span>
-                <div className="absolute inset-0 bg-gradient-to-r from-white/10 to-white/20 opacity-0 group-hover:opacity-100 transition-opacity duration-500"></div>
-              </div>
-            </div>
-          </button>
 
           {/* Candidate Portal Card */}
           <button
@@ -168,11 +128,11 @@ export default function LandingPage() {
             {/* Animated Background */}
             <div className="absolute inset-0 bg-gradient-to-br from-orange-500/5 via-pink-500/5 to-red-500/5 opacity-0 group-hover:opacity-100 transition-all duration-700"></div>
             <div className="absolute inset-0 bg-gradient-to-r from-orange-500/10 to-pink-500/10 opacity-0 group-hover:opacity-100 transition-all duration-1000 delay-300"></div>
-            
+
             {/* Floating Particles Effect */}
             <div className="absolute top-4 right-4 w-2 h-2 bg-orange-400 rounded-full opacity-0 group-hover:opacity-100 animate-bounce transition-opacity duration-500 delay-200"></div>
             <div className="absolute top-8 right-8 w-1 h-1 bg-pink-400 rounded-full opacity-0 group-hover:opacity-100 animate-ping transition-opacity duration-500 delay-400"></div>
-            
+
             <div className="relative z-10 flex flex-col items-center text-center">
               {/* Large Image Container */}
               <div className="relative mb-8 group-hover:scale-110 transition-transform duration-500">
@@ -186,11 +146,11 @@ export default function LandingPage() {
                 Student Test
                 <span className="absolute -bottom-1 left-1/2 transform -translate-x-1/2 w-0 h-0.5 bg-gradient-to-r from-orange-500 to-pink-600 group-hover:w-full transition-all duration-500"></span>
               </h2>
-              
+
               <p className="text-gray-600 mb-8 leading-relaxed text-lg">
                 Practice interviews with AI, receive instant feedback, and boost your confidence to land your dream job.
               </p>
-              
+
               <div className="w-full bg-gradient-to-r from-orange-500 to-pink-600 text-white py-4 px-6 rounded-2xl font-semibold text-lg group-hover:from-orange-600 group-hover:to-pink-700 transition-all duration-500 shadow-lg group-hover:shadow-xl relative overflow-hidden">
                 <span className="relative z-10 flex items-center justify-center gap-2">
                   Candidate Portal
