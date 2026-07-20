@@ -171,7 +171,7 @@ const CompetitiveCodingPlatform = () => {
       if (response.ok) {
         const data = await response.json();
         console.log('Test results submitted:', data);
-        navigate('/interview');
+        navigate('/technical-interview');
       } else {
         throw new Error('Failed to submit test results');
       }

@@ -1,0 +1,262 @@
+Temporal Distribution Shift in Tabular Deep
+Learning: A Comparative Study on M5 Walmart
+Demand Forecasting
+1st Renuka N
+Artificial Intelligence and Machine Learning
+Kongu Engineering College
+Perundurai, Erode
+renuka66ksr@gmail.com
+2nd Srianish Rameshwaran
+Artificial Intelligence and Machine Learning
+Kongu Engineering College
+Perundurai, Erode
+srianish15@gmail.com
+
+3rd Subicharan Ravishankar
+Artificial Intelligence and Machine Learning
+Kongu Engineering College
+Perundurai, Erode
+subicharan1810@gmail.com
+4th Shanmuga Patel Kani C
+Artificial Intelligence and Machine Learning
+Kongu Engineering College
+Perundurai, Erode
+shanmuc10@gmail.com
+
+Abstract
+Gradient-boosted decision tree (GBDT) models have traditionally been regarded as the state-of-the-art solutionfor tabular prediction problems; however, we currently lack an understanding of the exact circumstances where this holds true. In our study, we conduct an empirical comparison of five tabular models: XGBoost, LightGBM, TabM, TabR, and TabPFN v2 on the M5 Walmart demand forecasting dataset, containing almost 42.0 million samples for 30490 SKUs. In order to investigate how models degrade depending on the type of temporal distribution shift, we introduce three evaluation settings: standard random split (E1), time-based split (E2), and cold-start, where products in the test set have less than 30 days of historical data (E3). We observe that temporal drift alone is not responsible for much degradation (2.8-4.5% WAPE increase) while the latter one is far more harmful with all models degrading by 44-50%. TabM model achieved the best results across all evaluation settings (WAPE: 0.610, 0.637, 0.915). Pretrained foundation TabPFN v2 model, which was introduced recently in Nature, showed the worst results, its WAPE on cold start even exceeded 1.0, being worse than the average forecast. Pairwise Wilcoxon tests show significance of results for most pairs, except XGBoost and LightGBM on E3. Our key finding is that cold-start rather than temporal drift is the limiting factor in retail forecasting, thus selection of the appropriate model depends on which one prevails.
+
+Keywords: Tabular deep learning; temporal distribution shift; demand forecasting; gradient-boosted trees; cold-start problem; TabM; TabPFN; M5 Walmart.
+
+I. INTRODUCTION
+Most industrial applications of machine learning operate on tabular data: rows and columns extracted from relational databases, spreadsheets, and data warehouses. This data powers demand forecasting, fraud detection, credit scoring, and supply chain optimization. It is estimated that nearly 80% of production ML systems deal with tabular data [1]. For the majority of the past decade, gradient-boosted decision trees (GBDTs), such as XGBoost [2] and LightGBM [3] have been the method of choice, showing remarkable resilience to improvement attempts.
+
+The scope of this dominance is noteworthy. In the annual Kaggle surveys of machine learning and data science usage, tree-based models have been leading the "most used algorithms" chart since it was first published. Structured data competitions are won by XGBoost or LightGBM ensembles, sometimes supplemented by feature engineering, but without any neural components. Even at companies having dedicated deep learning research teams, tabular workloads are trained on GBDTs because of their fast speed, low need for hyperparameter tuning and consistent performance. Many researchers thought that deep learning would eventually prevail in the area, similarly to computer vision and NLP. But that did not happen. Grinsztajn et al. [4] carefully compared several approaches on 45 datasets at NeurIPS 2022 and concluded that trees are winning, especially when features are heterogeneous and irregularly distributed. And the reasoning for this is quite obvious: tabular columns contain continuous prices, categorical product codes, and binary flags in one row. No grid like in images, no sequence like in text. Neural networks just do not have a proper inductive bias for this type of data.
+
+Nevertheless, the past several years have witnessed a flurry of attention-driven architectures specifically designed for table. Some use attention to process each feature as a separate token; some introduce retrieval modules to look up the training examples similar to a current one during inference; others ensemble multiple simple heads to add a degree of diversity. We will mention two papers of particular relevance to our study. First, TabPFN v2 [5] was published in Nature in early 2025 and showed that a pretrained transformer could outperform well-tuned baselines in under 3 seconds, but only on relatively small datasets containing less than 10,000 rows. Second, TabReD [6] was presented at ICLR 2025 and made a point that when changing from random train/test splits to more realistic time-based ones, the ranking of the models would be completely flipped. Trees and simple MLPs would suddenly start outperforming the attention-based models, which previously seemed to perform better in random splits.
+
+These two results seem to contradict each other and, upon closer inspection, reveal a gap. TabReD considers temporal shift as one big thing, but in reality, it consists of several different types. Nobody, to the best of our knowledge, attempted to decompose temporal shift into its component parts and assess the influence of each of them on tree-based and neural approaches separately.
+
+In this study, we attempt to fill this gap using the M5 Walmart dataset [7], 42 million rows of daily sales for 30,490 products and five representative models of the major paradigms: XGBoost, LightGBM, TabM [8], TabR [9] and TabPFN v2 [5]. We compare their performance under three different protocols, each corresponding to a separate shift type. Contributions of this work include:
+1) We introduce a decomposition framework for shift with three protocols, such as random split, temporal split and cold-start, applied to the M5 benchmark, which is arguably the most popular retail forecasting dataset.
+2) To the best of our knowledge, this is the first comparison of TabPFN v2, TabM, and TabR on a large-scale dataset with temporal and cold-start splits, supported by Wilcoxon signed-rank significance tests.
+3) We demonstrate that the cold-start scenario causes a 44-50% increase in WAPE relative to 2.8-4.5% induced by temporal drift, thus being the dominating source of shift.
+4) We define the shift sensitivity ratio which reflects the uniformity of degradation across different shift types for a model, and show that TabM performs the best in this aspect.
+The remainder of this paper is organized as follows: Related Work section in Section II, Methodology in Section III, Results in Section IV, Discussion in Section V, and Conclusion in Section VI.
+
+II. RELATED WORK
+A. Tabular Deep Learning Architectures
+Constructing neural networks able to compete with GBDTs on tables has been an active line of work since approximately 2021. FT-Transformer [10] by Gorishniy et al. tokenizes each feature separately and uses self-attention. It worked quite well on some benchmarks but failed to beat tuned trees consistently.
+SAINT, another attention-based method, introduced row and column attention but was also unable to achieve a consistent superiority over the well-tuned GBDTs on different benchmarks. NODE was embedding differentiable decision trees into neural networks, and while this interesting hybrid architecture was not able to scale well, it shares with others the same tendency i.e., good performance on hand-picked benchmarks but weaker performance on more diverse benchmarks. Most recently, two approaches gained traction for different reasons. TabR [9] (ICLR 2024) is taking a retrieval-augmented approach, introducing k-nearest neighbor lookup of training rows to a feed-forward network during inference. Effectively, this introduces a local inductive bias which is provided to the trees automatically due to their splitting mechanism. TabM [8] (ICLR 2025) took a completely opposite direction and has shown that a combination of simple MLP heads sharing feature processing beats every complex architecture that has been proposed before. The lesson from TabM is somewhat humbling, careful engineering of simple components matters more than architectural novelty.
+
+The second approach is the in-context learning approach. TabPFN v1 [11] (NeurIPS 2022) proposes pretraining a transformer on millions of synthetic datasets so that, at inference, it can use the entire training set as context and predict in one forward pass. TabPFN v2 [5] scaled this to 10,000 rows and was featured in Nature. In its follow-ups, like TabICL [12] and TabPFN Unleashed [13], the capacity was extended to about 60,000 rows. However, here is the thing: all those evaluations have used random splits. Nobody checked how models perform with temporal shifts.
+ 
+B. Temporal Distribution Shift in Tabular ML
+Distribution shift, or when the training and test datasets belong to different distributions, has been a well-researched topic [15]. In case of tabular machine learning, however, the temporal distribution shift is of particular importance; models trained on the past should be able to make predictions on a future which may appear statistically different. An important observation from TabReD paper [6] is that nearly all academic tabular benchmarks use random splits and thereby hide temporal effects. When authors have reran all models with proper time-based splits on eight industry datasets, the results have shifted drastically. Trees and simple MLPs beat the poor attention models. The takeaway is somewhat sobering the reported progress of many tabular deep learning papers will be invalid in real-world deployment.
+One attempt worth mentioning in this respect is TabPFN-TS [14] which used Fourier lag features to encode temporal dependencies and demonstrated the victory of TabPFN v2 over time-series foundation models. That was on small datasets with no temporal splits and no decomposition of the types of shifts. However, how do these models perform under realistic temporal shift in the real world, has, to the best of our knowledge, not been answered yet.
+
+C. Research Gap
+To the best of our knowledge, there is no prior work which (1) decomposes the temporal shift into subtypes and evaluates their individual effect on trees vs neural models, (2) evaluates TabPFN v2 on a dataset of this scale with temporal splits, and (3) tests all five major tabular ML paradigms against each other in a controlled shift setting with statistical testing. Our study intends to close all those gaps. 
+
+III. METHODOLOGY
+A. Dataset: M5 Walmart Competition
+The M5 dataset [7] is used for experiments. It comes from an open Kaggle competition hosted by Walmart. It contains daily unit sales for 30,490 SKUs from 10 stores in CA, TX, and WI over 1,913 days from 2011-01-01 to 2016-06-30. The products belong to 3 categories (Hobbies, Foods, Household), 7 departments, and 3,049 unique items. Every row is associated with the sell price, SNAP benefit, calendar event, and store/item id. The M5 dataset was selected due to its scale, existence of true sales patterns (weekly seasonality, holiday jumps, price impact), and 5500+ competing teams on it.
+
+B. Feature Engineering
+Feature engineering in our experiments is done following the standard M5 featurization pipeline in a way similar to the one TabPFN-TS [14] did. Instead of formulating the problem as a sequence modeling task, we converted the temporal data into tabular features such that all five models receive the same input. Specifically, the lag features are computed for lags t-7, t-14, t-28, and t-35; rolling mean/std features for 7-, 28-, and 90-days window; calendar features (day of week, month, weekend, holiday), price features (current price, weekly change ratio, category price rank), integer encoded categorical IDs (item id, department id, category id, store id, state), SNAP and event type flags. If the lag features are not available at the beginning of the time series, the rolling means are used to fill them in. As a result, the feature vector has 25 columns per row.
+
+C. Evaluation Protocols
+We set up three protocols, each targeting a different form of temporal shift:
+E1 --- Random Split: A simple 80/20 random split, disregarding the order of dates. It is a typical evaluation protocol for academic benchmarks [4]. Train: 31.5M rows, Test: 9.0M rows, all 30,490 series.
+E2 --- Temporal Split: Similar to TabReD evaluation protocol [6]. We train on days 1-1400 (years 1-4) and test on days 1522-1913 (year 5). Train: 29.5M rows, Test: 11.9M rows. Hereby we capture whatever natural shift occurred during the five years in the demand pattern, pricing pattern, and promotions.
+E3 --- Cold-Start: The testing is performed only for products with fewer than 30 days of training data, simulating the scenario when a new product is launched. We get 245K training rows and 495K test rows for 1,263 cold-start series. The hardest setup among all three, since no historical information about the item can be utilized, and the model should use inter-item patterns.
+
+
+D. Models
+We tested five models: XGBoost [2] with 1000 trees, max depth 7, learning rate 0.05, using the histogram method; LightGBM [3] with 1500 trees, 127 leaves, learning rate 0.05, and L1 loss; TabM [8] with embedding dimension 512, k=8 heads, 3 blocks, trained on GPU with patience 20; TabR [9] with d=96, context size 96, dropout 0.1, subsampled to 500K rows; and TabPFN v2 [5] with a context window of 8,000 rows, chunk size 50,000, averaged over 5 random seeds. The other four models used seed=42.
+
+E. Evaluation Metric and Statistical Testing
+The main metric used in this paper is WAPE (Weighted Absolute Percentage Error) defined as the sum of absolute errors divided by the sum of actual values. It is the main metric in demand forecasting tasks [7] because it properly handles the cases of zero-demand days and gives an interpretable value, which is simply the fraction of total demand that the model obtained wrong. We also provide relative degradation percentages: delta_E2 = (E2-E1)/E1, delta_E3 = (E3-E1)/E1. In order to evaluate the uniformity of degradation for a model on both shift types, the shift sensitivity is computed as delta_E3/delta_E2. For statistical testing, we perform pairwise Wilcoxon signed-rank test on per-item absolute errors on all 10 model pairs for each experiment with Bonferroni correction applied for 30 hypotheses (p<0.0017).
+
+IV. EXPERIMENTAL RESULTS
+A. Overall Performance
+Table I summarizes the full results. In E1 (random split), TabM outperforms other methods with WAPE 0.6099, followed by LightGBM with 0.6291, XGBoost with 0.6311, TabR with 0.6398, and the worst performer is TabPFN with 0.6934. The same ranking is observed in E2. All pairwise comparisons in E1 and E2 are statistically significant after Bonferroni correction (Wilcoxon, p is approximately 0 for all cases).
+TABLE I. WAPE BY MODEL AND EVALUATION PROTOCOL
+Model
+E1
+E2
+E3
+dE2%
+dE3%
+Sens.
+TabM
+0.6099
+0.6374
+0.9154
+4.50
+50.09
+11.12
+LightGBM
+0.6291
+0.6496
+0.9412
+3.25
+49.61
+15.24
+XGBoost
+0.6311
+0.6500
+0.9414
+2.99
+49.17
+16.45
+TabR
+0.6398
+0.6605
+0.9234
+3.23
+44.32
+13.73
+TabPFN
+0.6934
+0.7127
+1.0069
+2.79
+45.21
+16.19
+
+Best E1/E2/E3: TabM. dE2, dE3: relative degradation (%). Sens. = dE3/dE2. TabPFN: mean over 5 seeds.
+
+B. Temporal Shift Is Not That Bad (E1 to E2)
+Going from random to temporal splits decreases the performance of all models, but not substantially. Relative degradation is within 2.79% (TabPFN) and 4.50% (TabM). Intriguingly, while TabM is the model that degrades the most relative to E1 in switching to E2, it also provides the lowest WAPE in E2, since its starting point is considerably lower. This result indicates that M5 demands are fairly stationary between the chosen train/test split (day 1400), and temporal shift is not the challenging part here.
+
+C. Cold-Start Is Where Things Break (E1 to E3)
+Cold-start protocol produces quite a different picture. All models degrade by 44-50% relative to their E1 baselines. It should be noted that the level of relative degradation in cold-start protocol is significantly higher (by an order of magnitude) than in temporal shift one (2.8-4.5%).
+With respect to absolute E3 performance, the winner is again TabM (0.9154), with TabR next (0.9234), followed by LightGBM and XGBoost (0.9412 and 0.9414), and finally TabPFN (1.0069). The latter number requires an explanation: a WAPE above 1.0 means TabPFN performs worse than simply predicting the average sales for each series. This is a poor result for the model published in Nature.
+In terms of relative degradation, TabR comes out as the best (delta_E3=44.3%) because of the nature of its mechanism retrieval allows it to find similar products from the training set even when the target product is unknown. As for LightGBM and XGBoost, they show statistically undistinguishable E3 results (Wilcoxon p=0.0036, exceeding the corrected Bonferroni threshold of 0.0017).
+
+
+Fig. 1. Relative WAPE degradation from E1 under temporal shift (teal) and cold-start shift (purple). The near-invisible teal bars versus the tall purple bars show that cold-start is the real bottleneck.
+
+D. Shift Sensitivity
+We needed some number to measure how the degradation of a model was shared between the two types of shifts. We decided to use the ratio of delta_E3 to delta_E2 as sensitivity the smaller the number, the less disproportionate the impact of cold-start on degradation. TabM turned out to have the smallest sensitivity of 11.12, which is unexpected taking into account the fact that it had the largest temporal degradation. This means that, although the degradation of TabM is large in absolute terms, it is relatively small compared to its temporal degradation. At the opposite end, XGBoost with 16.45 seems to indicate that trees suffer especially heavily from cold-start relative to temporal shifts.
+
+E. Statistical Significance
+We ran Wilcoxon signed-rank tests on per-item absolute errors for every pair of models, in each of the three experiments---30 tests total. Table II shows the E3 results, where things get interesting. On E1 and E2, every single comparison is significant after Bonferroni correction. On E3, most comparisons remain significant, but two pairs fall just above the corrected threshold: XGBoost vs. LightGBM (p = 0.0036) and LightGBM vs. TabR (p = 0.0035). In practical terms, these three models are essentially tied on cold-start items.
+TABLE II. WILCOXON SIGNED-RANK TESTS ON E3 (COLD-START)
+Model A
+Model B
+p-value
+Sig.?
+TabM
+TabR
+2.06e-49
+Yes
+TabM
+LightGBM
+2.34e-55
+Yes
+TabM
+XGBoost
+1.39e-25
+Yes
+TabM
+TabPFN
+1.69e-198
+Yes
+XGBoost
+LightGBM
+0.0036
+No*
+LightGBM
+TabR
+0.0035
+No*
+XGBoost
+TabR
+4.15e-7
+Yes
+TabPFN
+TabR
+1.13e-186
+Yes
+*Not significant after Bonferroni correction (threshold: p < 0.0017). All E1 and E2 pairs are significant.
+
+Fig. 2. E2/E1 and E3/E1 degradation ratios. TabR has the lowest E3/E1 (1.44x). TabPFN's seemingly low E3/E1 of 1.45x is misleading because its E1 baseline is already poor.
+
+F. Per-Model Observations
+TabM performs best on all protocols (E1: 0.6099, E2: 0.6374, E3: 0.9154), and it is also the least shift sensitive (11.12). The network architecture of eight MLP heads with a shared backbone appears to provide a effective balance between diversity and regularization. We believe that the reason it outperforms other more sophisticated models is that it implicitly applies smoothing across different prediction approaches without extra retrieval or attentional components.
+LightGBM and XGBoost show essentially identical WAPE values (differ by <0.002 on all protocols) and are statistically equivalent on E3. They have the same accuracy performance but they differ significantly in computation time it is 657 seconds versus 3,485 seconds on E2, respectively, i.e., ~5x speedup for LightGBM. 
+TabR shows the lowest cold-start degradation (44.3%). It is intuitive since in case there are no historical data for a new product, retrieval can still find similar products in the training set. It is just an integrated collaborative filtering. However, it has the worst WAPE performance on the absolute scale compared to TabM on all protocols.
+TabPFN v2 underperforms on all protocols. E1 WAPE (0.6934) of TabPFN is already 10% worse than TabM, and we think that the reason for that is purely context window truncation (8,000 rows). Thus, it gets less than 0.03% of the 31.5 million samples for each prediction from the training dataset. On cold-start, it even exceeds 1.0 WAPE mark and, thus, starts producing noise instead of meaningful predictions.
+
+G. Runtimes
+Table III contains runtime values. The only relevant approach is that LightGBM completes the E2 protocol in 11 minutes whereas TabM completes it in approximately 2.5 hours the speedup is 14x.
+TABLE III. RUNTIME (SECONDS, SINGLE SEED)
+Model
+E1
+E2
+E3
+LightGBM
+2,957
+657
+29
+XGBoost
+3,929
+3,485
+25
+TabPFN
+18,481
+24,360
+1,026
+TabR
+20,258
+20,577
+546
+TabM
+23,191
+9,102
+126
+TabPFN total across 5 seeds. Neural models on CUDA GPU.
+When the WAPE accuracy gap between TabM and LightGBM is ~2 points, one could say that 14x speed gap makes LightGBM preferable for production pipelines which need retraining daily. All models complete the E3 dataset quickly, so speed is not an important factor for cold-start.
+
+V. DISCUSSION
+A. Cold-Start as the Real Challenge
+First, the biggest observation here is the stark asymmetry of two shift types. While temporal drift causes 2-4x degradation of the performance compared to the training data, cold-start causes 10-18x more of that. This significantly changes the paradigm. TabReD [6] has rightly focused on temporal shift as the main flaw in tabular model evaluation, yet our decomposition reveals that, for retail forecasting specifically, the temporal drift is actually quite moderate (less than 5% for every single model we tried). The real problem is dealing with items that are 
+ly seen during the training period. Organizations concerned about distribution shifts in their forecasting pipelines should probably focus more on the cold-start robustness rather than temporal drift handling. For instance, a major retailer adding 2,000 new SKU's per year is way more affected by the introduction of those items into the forecast than by the evolution of demand patterns in its 30,000 existing products. The industry-standard practice of using "analogous items" for new product forecasting can be viewed as solving the problem similar to what TabR solves architecturally.
+
+B. Making Sense of TabPFN v2 and TabReD Together
+TabPFN v2 [5] and TabReD [6] sound like contradicting each other: TabPFN v2 claims that neural models should be preferred while TabReD claims the opposite. However, our experiments show that they are right in their respective fields. TabPFN v2 works well only in the cases when the size of the dataset is small enough to fit inside the context window of the model. On M5, even the random split yields a poor WAPE score of 0.6934 because it is limited by seeing 8000 out of 31.5 million training rows. Thus, this finding is not contradicting the previous one: it is just applicable to another scenario.
+
+C. Practical Recommendations
+Based on our observations, here is how we would recommend to practitioners to operate: (1) if you have access to GPU and able to train models weekly or less often, TabM is the best choice – it is the best at everything and has the most balanced degradation pattern. (2) if you need to train models daily or don't have GPU hardware, then LightGBM allows reaching almost the same WAPE scores as TabM at drastically smaller computational cost. (3) if your product catalog has high cold-start turnover (fast fashion and/or seasonal items, e.g.), then it is worth looking into TabR because of lower relative cold-start degradation, yet TabM is still better in absolute terms. (4) do not use TabPFN v2 for datasets larger than 10,000 rows due to the context window restriction.
+
+D. Limitations
+There are some limitations we want to explicitly mention. First, since we used only one dataset (M5), we cannot claim these patterns to hold for, for example, groceries versus electronics versus pharmaceuticals. TabPFN v2 was run with 5 seeds, while other models were run with one. Also, we observed that TabM E3 scores may vary by ~0.01 WAPE points across runs due to GPU non-determinism. As for the cold-start threshold, we chose 30 days and different thresholds might give different results. Other shift types such as promotions and macroeconomic effects were also not considered. Also, there is a potential of different results based on different feature engineering. Our approach is typical for M5, yet other choices might give different model orderings. The lag features, in particular, are crucial for tree models, and it might be asked if trees suffer from cold-start due to feature engineering? In fact, this is the point: lag features are the standard in production, and any model that is supposed to be used there is going to face them.
+
+
+
+VI. CONCLUSION
+In conclusion, we have found that the way in which various temporal distribution shifts affect tabular ML models was fairly straightforward. Cold-start is the hard case and causes 44-50% WAPE degradation, outperforming temporal drift in terms of its WAPE of 2.8-4.5%. It is true for any model we have analyzed from tree ensembles to pretrained foundation models.
+From the practical perspective, the implications are very clear. TabM is the best model we have tested and outperforms other models in all three protocols having WAPE of 0.610, 0.637, and 0.915 and the most balanced shift sensitivity profile (11.12). TabPFN v2 performed the worst in all cases and had catastrophic performance in cold start conditions having WAPE above 1.0. XGBoost and LightGBM have similar performance in cold start condition and can be regarded as interchangeable models, however, LightGBM works faster.
+The general observation we would like to make is about tabular foundation models in particular. There is no doubt about the appeal of the TabPFN train once and predict anything; however, our results reveal a tough trade-off in this case. In-context learning requires the input data to be fitted into the window. However, in the context of production datasets, it is just a tiny part of the whole signal. Until someone finds a way to compress/hierarchically summarize millions of training rows in a meaningful context, the foundation models will be useful only in small-data settings. The latest TabICL [12] and TabPFN Unleashed [13] papers are attempts to do so, pushing up to 60,000 rows. But M5 has 31 million. It is a three-orders-of-magnitude difference. Going forward, we plan to apply the same decomposition approach to other types of shifts (promotional changes, trend reversals, and demand shock) and hybrid approach where predictions will be directed to the certain models depending on the new or old status of the products.
+
+ACKNOWLEDGMENT
+We would like to thank the Department of Artificial Intelligence and Machine Learning at Kongu Engineering College, Perundurai for the computing resource and supervision provided in this research.
+ 
+REFERENCES
+[1] S. Shwartz-Ziv and A. Armon, "Tabular data: Deep learning is not all you need," Information Fusion, vol. 81, pp. 84-90, 2022.
+[2] T. Chen and C. Guestrin, "XGBoost: A scalable tree boosting system," in Proc. ACM SIGKDD, 2016, pp. 785-794.
+[3] G. Ke et al., "LightGBM: A highly efficient gradient boosting decision tree," in Advances in NeurIPS, vol. 30, 2017.
+[4] L. Grinsztajn, E. Oyallon, and G. Varoquaux, "Why do tree-based models still outperform deep learning on typical tabular data?" in Advances in NeurIPS, vol. 35, 2022.
+[5] N. Hollmann, S. Muller, and F. Hutter, "Accurate predictions on small data with a tabular foundation model," Nature, vol. 637, pp. 319-326, Jan. 2025.
+[6] I. Rubachev, N. Kartashev, Y. Gorishniy, and A. Babenko, "TabReD: Analyzing pitfalls and filling the gaps in tabular deep learning benchmarks," in Proc. ICLR, 2025.
+[7] S. Makridakis, E. Spiliotis, and V. Assimakopoulos, "M5 accuracy competition: Results, findings, and conclusions," Int. J. Forecasting, vol. 38, no. 4, pp. 1346-1364, 2022.
+[8] Y. Gorishniy, A. Kotelnikov, and A. Babenko, "TabM: Advancing tabular deep learning with parameter-efficient ensembling," in Proc. ICLR, 2025.
+[9] Y. Gorishniy et al., "TabR: Tabular deep learning meets nearest neighbors," in Proc. ICLR, 2024.
+[10] Y. Gorishniy, I. Rubachev, V. Khrulkov, and A. Babenko, "Revisiting deep learning models for tabular data," in Advances in NeurIPS, vol. 34, 2021.
+[11] N. Hollmann et al., "TabPFN: A transformer that solves small tabular classification problems in a second," in Proc. ICLR, 2023.
+[12] A. Qu, J. Allard, and G. Varoquaux, "TabICL: A tabular foundation model for in-context learning on large data," in Proc. ICML, 2025.
+[13] S.-Y. Liu and H.-J. Ye, "TabPFN unleashed: A scalable and effective solution to tabular classification," in Proc. ICML, 2025.
+[14] C. H. Hoo, S. Muller, V. Salinas, and F. Hutter, "The tabular foundation model TabPFN outperforms specialized time series forecasting models," arXiv:2501.02945, 2025.
+[15] J. Quinonero-Candela et al., Dataset Shift in Machine Learning. MIT Press, 2009.

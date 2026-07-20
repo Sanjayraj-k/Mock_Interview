@@ -192,13 +192,13 @@ export default function HRDashboard() {
                 <User className="w-6 h-6 text-white" />
               </div>
               <div>
-                <h1 className="text-xl font-bold text-gray-900">AI Mock Interview</h1>
-                <p className="text-sm text-gray-500">HR Management Portal</p>
+                <h1 className="text-xl font-bold text-gray-900">Multi-Agent Assessment Platform</h1>
+                <p className="text-sm text-gray-500">Faculty Management Portal</p>
               </div>
             </div>
             <div className="flex items-center space-x-4">
               <div className="text-right">
-                <p className="text-sm font-medium text-gray-900">HR Manager</p>
+                <p className="text-sm font-medium text-gray-900">Faculty Evaluator</p>
                 <p className="text-xs text-gray-500">{hrData?.email || 'Loading...'}</p>
               </div>
               <button
@@ -285,8 +285,8 @@ const TestResultsModal = ({ role, results, loading, onClose }) => {
 
   // --- Event Handler for Email Button ---
   const handleEmailStudent = (studentEmail) => {
-    const subject = "Update Regarding Your Application at Sab Labs";
-    const body = "Dear Candidate,\n\nCongratulations!\n\nWe are pleased to inform you that you have been successfully placed at Sab Labs following your performance in the recent interview rounds. \n\nFor further details regarding your offer and onboarding process, we encourage you to visit our company's career portal or await communication from our HR team.\n\nBest Regards,\nThe HR Team\nSab Labs";
+    const subject = "Update Regarding Your Assessment Results";
+    const body = "Dear Candidate,\n\nCongratulations!\n\nWe are pleased to inform you that you have successfully cleared the placement assessment rounds. \n\nFor further details regarding your results and next steps, please await communication from the Faculty & Placement Cell.\n\nBest Regards,\nThe Faculty & Placement Team";
     
     // Create a mailto link and trigger it
     const mailtoLink = `mailto:${studentEmail}?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`;
@@ -406,12 +406,12 @@ const TestResultsModal = ({ role, results, loading, onClose }) => {
 const DashboardContent = ({ roles, students }) => (
     <div>
       <h2 className="text-2xl font-bold text-gray-900 mb-2">Dashboard Overview</h2>
-      <p className="text-gray-600 mb-6">Your personal overview of interviews and candidates.</p>
+      <p className="text-gray-600 mb-6">Comprehensive view of assessment drives, candidate readiness, and multi-agent interview analytics.</p>
       <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
         <div className="bg-white p-6 rounded-xl shadow-sm border">
           <div className="flex items-center justify-between">
             <div>
-              <p className="text-sm font-medium text-gray-600">Your Roles Created</p>
+              <p className="text-sm font-medium text-gray-600">Interview Drives Created</p>
               <p className="text-3xl font-bold text-gray-900">{roles.length}</p>
             </div>
             <div className="w-12 h-12 bg-blue-100 rounded-lg flex items-center justify-center">
@@ -422,7 +422,7 @@ const DashboardContent = ({ roles, students }) => (
         <div className="bg-white p-6 rounded-xl shadow-sm border">
           <div className="flex items-center justify-between">
             <div>
-              <p className="text-sm font-medium text-gray-600">Your Students Added</p>
+              <p className="text-sm font-medium text-gray-600">Enrolled Students</p>
               <p className="text-3xl font-bold text-gray-900">{students.length}</p>
             </div>
             <div className="w-12 h-12 bg-green-100 rounded-lg flex items-center justify-center">
@@ -433,7 +433,7 @@ const DashboardContent = ({ roles, students }) => (
         <div className="bg-white p-6 rounded-xl shadow-sm border">
           <div className="flex items-center justify-between">
             <div>
-              <p className="text-sm font-medium text-gray-600">Your Active Interviews</p>
+              <p className="text-sm font-medium text-gray-600">Active Interview Rounds</p>
               <p className="text-3xl font-bold text-gray-900">{roles.filter(r => new Date(r.date) >= new Date()).length}</p>
             </div>
             <div className="w-12 h-12 bg-purple-100 rounded-lg flex items-center justify-center">
@@ -449,8 +449,8 @@ const RolesContent = ({ roles, showCreateRole, setShowCreateRole, newRole, setNe
     <div>
       <div className="flex items-center justify-between mb-6">
         <div>
-          <h2 className="text-2xl font-bold text-gray-900">Interview Roles</h2>
-          <p className="text-gray-600">Create and manage your interview assessments.</p>
+          <h2 className="text-2xl font-bold text-gray-900">Interview Drives & Roles</h2>
+          <p className="text-gray-600">Create and manage candidate assessment rounds and placement drives.</p>
         </div>
         <button 
           onClick={() => setShowCreateRole(!showCreateRole)} 

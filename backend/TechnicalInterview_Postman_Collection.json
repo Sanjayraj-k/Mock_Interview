@@ -1,0 +1,154 @@
+{
+  "info": {
+    "_postman_id": "tech-interview-agents-v2",
+    "name": "🤖 Technical Interview - Multi-Agent System",
+    "description": "AI-Powered Technical Interview System using LangGraph + LangChain.\n\n## Flow:\n1. **Health Check** → verify server is running\n2. **Upload Resume** → upload your PDF/DOCX/TXT resume\n3. **Start Interview** → get Question 1\n4. **Submit Answer** → get next question or follow-up\n5. Repeat Step 4 until you get `status: complete`\n6. **View Status** anytime to see scores\n7. **Reset** to start over\n\n## Base URL: http://127.0.0.1:8001",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "variable": [
+    {
+      "key": "base_url",
+      "value": "http://127.0.0.1:8001",
+      "type": "string"
+    }
+  ],
+  "item": [
+    {
+      "name": "1️⃣ Health Check",
+      "request": {
+        "method": "GET",
+        "header": [],
+        "url": {
+          "raw": "{{base_url}}/api/v2/health",
+          "host": ["{{base_url}}"],
+          "path": ["api", "v2", "health"]
+        },
+        "description": "Check if the server and all 3 agents are running correctly.\n\n**Expected Response:**\n```json\n{\n  \"status\": \"healthy\",\n  \"service\": \"Technical Interview Multi-Agent System\",\n  \"agents\": [\"ResumeExtractor\", \"QuestionGenerator\", \"Evaluator\"],\n  \"groq_connected\": true,\n  \"pdf_support\": true,\n  \"docx_support\": true,\n  \"max_questions\": 5,\n  \"total_max_marks\": 50\n}\n```"
+      },
+      "response": []
+    },
+    {
+      "name": "2️⃣ Upload Resume (PDF/DOCX/TXT)",
+      "request": {
+        "method": "POST",
+        "header": [],
+        "body": {
+          "mode": "formdata",
+          "formdata": [
+            {
+              "key": "resume",
+              "type": "file",
+              "src": "",
+              "description": "Select your resume file (PDF, DOCX, or TXT)"
+            }
+          ]
+        },
+        "url": {
+          "raw": "{{base_url}}/api/v2/upload-resume",
+          "host": ["{{base_url}}"],
+          "path": ["api", "v2", "upload-resume"]
+        },
+        "description": "Upload your resume file. The Resume Extractor Agent will:\n- Parse the PDF/DOCX/TXT\n- Extract projects, skills, tech stack, internships, certifications\n- Build a structured profile for question generation\n\n**Steps in Postman:**\n1. Go to Body tab\n2. Select `form-data`\n3. Set Key = `resume`, Type = `File`\n4. Click `Select File` and choose your resume\n\n**Expected Response:**\n```json\n{\n  \"status\": \"ready\",\n  \"candidate_name\": \"John Doe\",\n  \"message\": \"Resume processed successfully.\",\n  \"resume_length\": 3421\n}\n```"
+      },
+      "response": []
+    },
+    {
+      "name": "3️⃣ Start Interview",
+      "request": {
+        "method": "GET",
+        "header": [],
+        "url": {
+          "raw": "{{base_url}}/api/v2/start",
+          "host": ["{{base_url}}"],
+          "path": ["api", "v2", "start"]
+        },
+        "description": "Starts the technical interview and returns the first question.\n\nMust call Upload Resume first!\n\n**Questions flow:**\n- Q1-Q2: Based on your PROJECTS from resume\n- Q3-Q5: CORE CS SUBJECTS (DSA, OS, DBMS, CN, OOP)\n\n**Expected Response:**\n```json\n{\n  \"status\": \"interview_started\",\n  \"question\": \"In your [Project], how did you handle...\",\n  \"question_number\": 1,\n  \"total_questions\": 5,\n  \"topic\": \"project\",\n  \"marks_per_question\": 10,\n  \"total_marks\": 50,\n  \"is_followup\": false\n}\n```"
+      },
+      "response": []
+    },
+    {
+      "name": "4️⃣ Submit Answer",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n    \"answer\": \"Type your answer here. For example: In my e-commerce project, I used React for the frontend with Context API for state management. The backend was built with Node.js and Express, connected to MongoDB Atlas. I implemented JWT authentication with refresh tokens stored in HTTP-only cookies for security.\"\n}",
+          "options": {
+            "raw": {
+              "language": "json"
+            }
+          }
+        },
+        "url": {
+          "raw": "{{base_url}}/api/v2/answer",
+          "host": ["{{base_url}}"],
+          "path": ["api", "v2", "answer"]
+        },
+        "description": "Submit your answer to the current question.\n\n**The Evaluator Agent will:**\n- Score your answer (0-10)\n- If score < 6 → ask a follow-up question\n- If score >= 6 → move to next main question\n- After 5 main questions → generate final report\n\n**Response when more questions remain:**\n```json\n{\n  \"status\": \"question\",\n  \"question\": \"Next question...\",\n  \"question_number\": 2,\n  \"total_questions\": 5,\n  \"is_followup\": false,\n  \"scores_so_far\": [8],\n  \"marks_earned_so_far\": 8,\n  \"max_marks\": 50\n}\n```\n\n**Response when follow-up triggered (score < 6):**\n```json\n{\n  \"status\": \"followup\",\n  \"question\": \"Can you elaborate on...\",\n  \"is_followup\": true,\n  \"scores_so_far\": [4]\n}\n```\n\n**Response when interview complete:**\n```json\n{\n  \"status\": \"complete\",\n  \"final_report\": \"...detailed report...\",\n  \"total_marks\": 38,\n  \"max_marks\": 50,\n  \"scores\": [8, 7, 9, 6, 8]\n}\n```"
+      },
+      "response": []
+    },
+    {
+      "name": "5️⃣ Submit Answer - Follow-up",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n    \"answer\": \"Let me explain further. The reason I chose this approach was because it offered better performance in terms of scalability. For example, by using indexing on the database queries, we reduced response time from 2 seconds to 200ms.\"\n}",
+          "options": {
+            "raw": {
+              "language": "json"
+            }
+          }
+        },
+        "url": {
+          "raw": "{{base_url}}/api/v2/answer",
+          "host": ["{{base_url}}"],
+          "path": ["api", "v2", "answer"]
+        },
+        "description": "Use this to answer a follow-up question. Same endpoint as Submit Answer — just change the answer text."
+      },
+      "response": []
+    },
+    {
+      "name": "6️⃣ Check Status",
+      "request": {
+        "method": "GET",
+        "header": [],
+        "url": {
+          "raw": "{{base_url}}/api/v2/status",
+          "host": ["{{base_url}}"],
+          "path": ["api", "v2", "status"]
+        },
+        "description": "Check the current interview session status at any time.\n\n**Expected Response:**\n```json\n{\n  \"status\": \"asking\",\n  \"questions_asked\": 2,\n  \"total_questions\": 5,\n  \"scores_so_far\": [8, 7],\n  \"marks_earned\": 15,\n  \"max_marks\": 50,\n  \"has_resume\": true,\n  \"is_complete\": false,\n  \"current_question\": \"Explain the difference between...\"\n}\n```"
+      },
+      "response": []
+    },
+    {
+      "name": "7️⃣ Reset Session",
+      "request": {
+        "method": "POST",
+        "header": [],
+        "url": {
+          "raw": "{{base_url}}/api/v2/reset",
+          "host": ["{{base_url}}"],
+          "path": ["api", "v2", "reset"]
+        },
+        "description": "Reset the current session to start fresh.\nYou will need to upload your resume again after resetting.\n\n**Expected Response:**\n```json\n{\n  \"status\": \"reset\",\n  \"message\": \"Session cleared. Upload resume to start again.\"\n}\n```"
+      },
+      "response": []
+    }
+  ]
+}

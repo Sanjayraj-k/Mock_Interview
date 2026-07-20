@@ -1,0 +1,536 @@
+--- PAGE 1 ---
+Volume 11, Issue 1, January – 2026                               International Journal of Innovative Science and Research Technology 
+ISSN No: -2456-2165                                                                                                              https://doi.org/10.38124/ijisrt/26jan835 
+ 
+ 
+IJISRT26JAN835                                                               www.ijisrt.com                                                                                     1981  
+Prep AI - Customized Mock Interview Platform 
+Using Gen AI 
+ 
+ 
+K. Divya Bhavani1; G. H. S. V. K. Prasad2; V. G. S. Sai Krishna3; 
+M. S. Koti Reddy4; K. Shanmukh Vardhan5; Md. Sadik6 
+ 
+12345UG Scholar, 6Assistant Professor 
+  
+123456Department of CSE, Sri Vasavi Engineering College(A), Tadepalligudem 
+ 
+Publication Date: 2026/01/27 
+ 
+ 
+Abstract: In the modern competitive labor market, preparedness during interviews has become critical towards gaining 
+employment. The current paper introduces a project Prep  AI. A Customized Mock Interview Platform Using Generative 
+AI, an intelligent web-based application that strives to provide students and job applicants with the simulated experience of 
+a personal interview. According to the system, resume-based and role-based mock interview modes are combined to answer 
+dynamic questions with large language models (LLM) like LLaMA 3 through Groq API. Communication is conducted in real 
+time by the voice reaction, which is recorded with the help of WebRTC and analyzed with speech recognition and facial 
+recognition. The platform is created using Flask and React TypeScript and has been integrated with NLP, computer vision, 
+and emotion recognition to evaluate communication skills, grammar, and confidence. The paper shows how AI-based scoring 
+and feedback has the potential to enhance the performance of the user and resolve the discrepancy between training and a 
+real-life interview. 
+ 
+Keywords: AI Mock Interview, Generative AI, Natural Language Processing, Flask, LLaMA, WebRTC. 
+ 
+How to Cite: K. Divya Bhavani; G. H. S. V. K. Prasad; V. G. S. Sai Krishna; M. S. Koti Reddy; K. Shanmukh Vardhan; Md. Sadik 
+(2026) Prep AI - Customized Mock Interview Platform Using Gen AI. International Journal of Innovative Science and  
+Research Technology, 11(1), 1981-1986. https://doi.org/10.38124/ijisrt/26jan835 
+ 
+I. INTRODUCTION 
+ 
+Under the digital transformation, “Artificial 
+Intelligence (AI)” has transformed the world in several areas 
+and sectors where it was executed including education and 
+recruitment and  in professional training. The traditional 
+methods of  interview preparation, e.g., several canned 
+questions, or even training in coaching are not conducted in 
+the out -of-the-box and customized look of a genuine 
+interview. 
+ 
+After creating the “Natural Language Processing 
+(NLP)”, “Speech Recognition” and “Computer Vision”, now, 
+the effect of  real interview, when  the applicant must be 
+checked on the technical knowledge, along with the skills of 
+communication, is possible. Generative AI models include 
+the Large Language Models (LLM) (such as LLaMA, GPT -
+related, etc.), which are capable of creating human -like as 
+well as context-related questions and feedback. 
+ 
+These technologies, in combination with the  AI-based 
+mock interviewing can be employed to provide the more 
+objective result on the  preparedness of the candidate 
+becoming aware of themselves and increasing performance in 
+the long-run. 
+Students and job seekers also complain of anxiety 
+during interviews, a lack of individualized feedback, and 
+exposure to realistic interviewing conditions. The current 
+online transactions only offer textual questions and 
+uninteractive assessments, which are not representative of a 
+real interaction. 
+ 
+This work is motivated by the desire to produce a 
+simulation system of an interview that uses artificial 
+intelligence to simulate an actual interview events taking 
+place. These are dynamic question generation, voice 
+recognition, feature analysis and performance and feedback. 
+ 
+In this way, the platform will democratic access to 
+professional interview practice and allow users to get better 
+through repeated and data-driven sessions. 
+ 
+II. LITERATURE SURVEY 
+ 
+Many research studies includes the work of Artifical 
+intelligence[AI] for developing mock interview platform. 
+ 
+Smith and Brown (2021) proposed an AI Powered Mock 
+Interview Platform that used virtual simulation technologies 
+for interviews preparation, user interaction.  This platform 
+--- PAGE 2 ---
+Volume 11, Issue 1, January – 2026                               International Journal of Innovative Science and Research Technology 
+ISSN No: -2456-2165                                                                                                              https://doi.org/10.38124/ijisrt/26jan835 
+ 
+ 
+IJISRT26JAN835                                                               www.ijisrt.com                                                                                     1982  
+also provides feedback to users based on the “user’s interview 
+and the main issue is”, it faced limitation due to security 
+issues. 
+ 
+Dr. Prakash and Siranjeevi (2024) made Next Interview, 
+which reviews existing AI-based solutions and highlights AI-
+based personalization and personalized feedback for 
+interviewer’s improvement. 
+ 
+Shubin Yu (2025) presented An AI Powered Interview 
+platform: MimiTalk, evaluates AI vs Human based interview 
+and discusses about future research about automated 
+interview using Large Language Models (LLM’s). 
+ 
+All research work describes about the AI future 
+enhancement and improvements regarded automated 
+interview and personalized feedback using Large Language 
+Models and other AI models. It needs further research using 
+Generative AI specially LLaMA models. 
+ 
+III. PROBLEM STATEMENT 
+ 
+A. Some of Weaknesses of Existing Mock Interview Systems 
+are: 
+Lack of Personalization: Most of the systems are not 
+personalized with regards to resumes and job positions of the 
+user. Low Feedback quality Evaluation is often generic and 
+does not go too much into analyzing the tone, communication 
+and confi dence. Absence of Multimodal Feeds: The 
+platforms available are not very frequent in including the 
+speech and facial feedback in the process of the assessments. 
+Lack of Real-Time Communication: delays in answering and 
+clearance of assessment infringes with incumbence of a face-
+to-face interview. To eliminate these limitations, this research 
+will propose a Multimodal Generative AI Framework, that is 
+a combination of NLP, Speech Recognition and Computer 
+Vision to have a continuous real time interview. 
+ 
+IV. OBJECTIVE 
+ 
+A. The “Primary Objectives” of this Research are: 
+To develop a interview platform that supports both 
+resume and role based mock interviews. To improve the 
+platform’s performs by generating context based questions 
+using generative model especially using Llama 3. To evaluate 
+face emotions and evaluating user answers in real time which 
+also includes speech recognition and text transformation. 
+Generate feedback using user real time face emotion analysis 
+to increase the capability of individual user in expressing their 
+views correctly through their face. To build a user -friendly 
+interface that helps users to interact easily and evaluate their 
+progress. To track user performance over multiple mock 
+interview sessions and provide personalized 
+recommendations for improvement based on historical data. 
+To simulate real -world interview scenarios using AI -driven 
+role-specific questioning and multimodal interaction to 
+enhance user preparedness and confidence. 
+ 
+ 
+ 
+ 
+V. PROPOSED SYSTEM 
+ 
+The one that is offered is PREP  AI which  is a 
+multimodal intelligent mock interview platform operating on 
+the basis  of the Generative AI and the Natural Language 
+Processing (NLP). It anticipates providing it with interactive 
+and personalized interview experience, which will be tailored 
+to the background and resume of target candidate and the job 
+position. The system bridges the gap between traditional and 
+formalized interviews, which are the conventional forms of 
+interview, and the reality of the real -life interview with the 
+assistance of AI -powered question generation, voice 
+recognition, and analytics of the feedback. 
+ 
+B. Smart Question Generating 
+The system uses interactive interview questions that 
+are dynamically generated with Generative AI models 
+(including GPT -based architecture) that is specially 
+configured to: The  abilities, experience, undertakings, 
+schooling of the user. The position or the company that is 
+selected. The interview- based one (Technical / HR).This has 
+been so to make each interview unique, industry situation and 
+industry anticipation. 
+ 
+C. Multimodal Interview Interaction 
+Using PREP AI, voice-based services and interaction is 
+possible as compared to the existing systems of text- only 
+interaction, which is supported by the WebRTC and Speech 
+Recognition tools. A  speech synthesis questions interviewer 
+(AI). The candidate interview is conducted verbally and this is 
+simulated as an actual interview. Such a multimodal system 
+enhances the degree of realism and helps users to elevate the 
+degrees of verbal communication, confidence, and fluency. 
+ 
+D. Analysis of My Response and Feedback in Real-Time 
+The speech-to-text conversion converts the audio 
+feedback provided by the candidate into text that is analyzed 
+by referring to NLP.  Appropriateness and correctness of the 
+information. Grammar and vocabulary Articulateness and 
+confidence of speech. Emotionality and atmosphere. On the 
+basis of this, the system will provide real-time feedback and 
+quantitative score of the performance that will enable the users 
+to track down on what they need to improve. 
+ 
+E. Monitoring the Interpretations of Interview 
+The system stores a record of performance of every 
+user, which includes the feedback and the scores  that are 
+achieved with different sessions. Learning throughout life and 
+skills observation. Preparation of growth reports, analytics 
+dashboard that shows the growth patterns. 
+ 
+F. Resume and Role Integration 
+PREP AI It is an algorithm that transforms an uploaded 
+resume of the user into the necessary keywords, skills  and 
+some project details, obtained by extracting information and 
+analyzing the data using semantics.  Depersonalize the 
+interview questions depending on the experience of the user. 
+Fargo pose mannerisms of actual corporations interview 
+pattern depending on the field of the candidate. 
+ 
+ 
+--- PAGE 3 ---
+Volume 11, Issue 1, January – 2026                               International Journal of Innovative Science and Research Technology 
+ISSN No: -2456-2165                                                                                                              https://doi.org/10.38124/ijisrt/26jan835 
+ 
+ 
+IJISRT26JAN835                                                               www.ijisrt.com                                                                                     1983  
+G. Individualization and Custom Learning 
+The system is refined by a feedback mechanism that 
+relies on machine learning: Question difficulty level. 
+Evaluation accuracy. Individualization of feedback based on 
+previous-session. This will ensure that interview will evolve 
+as the degree of skills and preparation will build in the 
+candidate. 
+ 
+H. User-Friendly Web Interface 
+The system is  deployed as  a web  platform using a 
+costume of Flask / Streamlit on its front end and connection 
+to FastAPI or Flask on the back end. It provides: User  
+registration and log in of fluid. Interview role and type can be 
+selected easily to be used. Live interviewing control board 
+with stream audio and transcript. 
+VI. SYSTEM ARCHITECTURE 
+ 
+ 
+Fig 1 System Architecture of Prep AI- Customized Mock Interview Platform Using GenAI 
+ 
+The PREP AI architecture is such that it is smooth to 
+use AI intelligence and real-time interaction. All modules are 
+instrumental, such as question generation and delivery of 
+feedback, developing a data-driven, flexible and customized 
+interview preparation system. 
+ 
+VII. WORK FLOW 
+ 
+A. User Interface Layer 
+ 
+ This is where the system meets the user here they interact 
+with the site. 
+ Written in Flask, or Streamlit applications or any other web 
+technologies. 
+ Gives the customers an option to create their accounts, log 
+in and store their resume and get the interview type 
+(Technical or HR). 
+ WebRTC audio real-time access. 
+ Display questions, transparency, feedback and 
+performance reports on an interactive dashboard. 
+ Functions: 
+ 
+ Get user reply (voice reply, text reply, role play). 
+ Display AI generated interview question and results. 
+ Instant information using the backend. 
+ 
+B. Resume Processing Module 
+ 
+ This module analyses the uploaded resume ( PDF or text) 
+of the user to derive valuable information. 
+ Some of the NLP applications are Named Entity 
+Recognition (NER) and extraction of key words. 
+ Identifies skills, projects, education and experience with 
+the aim of customizing interview questions. 
+ Feeds structured data to an Artificial  Intelligence 
+Generator of Question  to come up  with contextual 
+questions. 
+ 
+ 
+
+--- PAGE 4 ---
+Volume 11, Issue 1, January – 2026                               International Journal of Innovative Science and Research Technology 
+ISSN No: -2456-2165                                                                                                              https://doi.org/10.38124/ijisrt/26jan835 
+ 
+ 
+IJISRT26JAN835                                                               www.ijisrt.com                                                                                     1984  
+C. Question Generator Artificial Intelligence 
+ 
+ That is what the system is all about and it is also powered 
+by Generative AI models (e.g., GPT-based architectures). 
+ Takes the user role input and name of the company, round 
+of the interview, and resume keywords. 
+ Technical and HR Interviews Both technical and HR 
+member Generates dynamic and relevant interview 
+questions. 
+ Guarantees the absence of the same interview sessions. 
+ 
+ Output:  
+A stream of tailored interview questionnaire that is 
+shown in the real-time to the user. 
+ 
+D. Voice Interaction Module 
+ 
+ Such a characteristic enables a verbal real-time 
+communication between the interviewer and the AI. 
+ Text-to- Speech (TTS) is an artificial intelligence-based 
+question to audio converter. 
+ Speech Recognition (ASR) is  the translation of the user 
+response of a speech in the  form of a text to be further 
+interpreted. 
+ 
+E. Response Analysis and Evaluation Module 
+ 
+ After converting the speech of user into text, a module is 
+then utilized which applies NLP and sentiment analysis in 
+analyzing the response. 
+ Assesses accuracy, emotion, grammar, fluency and tone 
+and relevance of the material. 
+ Gives grades based on such criteria as confidence, 
+communication skills and domain knowledge. 
+ Gathers a detailed feedback on areas of strengths and 
+weaknesses. 
+ 
+ Technologies Used: 
+ 
+ The spaCy NLP models, the Transformer models or the 
+OpenAI APIs. 
+ Machine learning sentiment and emotion detector models. 
+ 
+F. Feedback and Scoring Module 
+ 
+ It is an area that will interpret the outcomes of the 
+evaluation and develop a performance report to the 
+candidate. 
+ Interprets general interview score based on a number of  
+parameters. 
+ Displays graphical performance and real time responses. 
+ The information is done on the future comparison and 
+trends of the information in the stores. 
+ 
+G. Database Layer 
+All data of users as well as the system is stored in a 
+central database (MySQL, PostgreSQL or MongoDB). 
+ 
+ 
+ Data Stored Includes: 
+ 
+ User credentials and information. 
+ Uploaded resumes 
+ Questionnaires and session records. 
+ Feedback report during interviews and feedback obtained 
+with respect to answering questions.  
+ 
+This makes the system provide progress reports and 
+personal suggestions in subsequent sessions. 
+ 
+H. Admin and Analytics Module 
+ 
+ This aspect is largely used in system monitoring and data 
+analytics. 
+ Tracks user activity, interview history and performance of 
+a system. 
+ Guides generate reports on aggregates to determine their 
+overall skills gaps and the situation with user progress. 
+ Enables administrators to modify the question templates, 
+model parameters or system settings. 
+ 
+I. Workflow Summary 
+ 
+ Step-By-Step Process: 
+ 
+ User login- User checks and issues out resume. 
+ Resume Scanning- NLP recognizes expertise and 
+undertakings in large undertakings. 
+ Role interview- questions are generated by Question 
+Generation Gen AI. 
+ Interview Session - AI is the one that poses questions, user 
+answers with the help of the microphone. 
+ Speech Recognition → Written response of the user 
+ Response Evaluation →Assessments of Response 
+Evaluation NLP and response evaluations. 
+ Feedback Display → Immediate feedback and on time 
+performance graph 
+ Session data/ Data Store → data tracking and analytics. 
+ 
+VIII. RESULT 
+ 
+The proposed system, PREP  AI - Customized Mock 
+Interview Using Generative  AI, has been implemented and 
+assessed effectively to determine the performance of the 
+system in terms of generating intelligent, personalised and 
+interacting mock interview experience. The experiments were 
+aimed at examining the ability of the system to produce role-
+specific questions, voice-based interaction, and performance 
+feedback that is based on AI. 
+ 
+A. System Implementation Results 
+The prototype was implemented in the  form of a web-
+based application with Flask and FastAPI as  the back-end 
+integration and the user interface in Streamlit. Generative AI 
+model was utilized to generate adaptive technical and HR 
+questions according to the resume uploaded by the user and 
+the job position chosen. The voice -to-text interaction and 
+text-to voice interaction was realized through Text-to-Speech 
+--- PAGE 5 ---
+Volume 11, Issue 1, January – 2026                               International Journal of Innovative Science and Research Technology 
+ISSN No: -2456-2165                                                                                                              https://doi.org/10.38124/ijisrt/26jan835 
+ 
+ 
+IJISRT26JAN835                                                               www.ijisrt.com                                                                                     1985  
+(TTS) and Speech -to-Text (STT) modules based on the 
+WebRTC technology. 
+ 
+ When the Users were Tested, They Could: 
+ 
+ Authenticate and post resume to generate resumes to 
+customize questions. 
+ Choose type of interview (Technical or HR). 
+ Engage in live voice interview with the artificial 
+interviewer. 
+ Get immediate assessment notes with elaborated 
+suggestions. 
+ 
+The system managed to unify  AI question generation, 
+voice processing and use of NLP to evaluate and interact with 
+the simulated interview environment, which made it appear 
+like a real-life interview situation. 
+ 
+B. Comparative Performance Analysis 
+Table 1. There was a comparative study of the present 
+mock interview systems and the proposed PREP AI system. 
+The analysis focused on five large areas, which were 
+personalization of questions, interactivity, quality of 
+feedback, tracking progress, and user satisfaction. 
+ 
+ 
+Table 1 Comparative Performance Analysis 
+Evaluation Parameter Existing Systems Prep-AI (Proposed System) 
+Question Personalization Static and Generic Dynamic and Resume-Based 
+Voice Interaction Support Not Available Supported (TTS + STT +WebRTC) 
+Feedback Mechanism Manual or Basic Automated NLP-Based Evaluation 
+Progress Tracking Not Available Available 
+User Satisfaction 68% 92% 
+ 
+The findings indicate clearly  that PREP  AI is more 
+flexible and easy to use than the current systems. The visitor 
+is also capable of creating customized questions and providing 
+real-time feedback, which increases the experience of 
+learning and preparation. 
+ 
+C. Quantitative Evaluation 
+Table 2. The evaluation module of the system examined 
+user responses on various parameters that included  the 
+accuracy of the content, fluency, confidence, technical 
+understanding and so on. The mean findings of the 50 
+respondents have been summarized as follows: 
+ 
+Table 2 Quantitative Evaluation 
+Measure of Evaluation Mean Score (Percentage) 
+Content Accuracy 88 
+Grammar and Fluency 82 
+Confidence and Tone 85 
+Technical Knowledge 80 
+Overall Performance 84 
+ 
+These scores suggest that the system is effective in the 
+evaluation of most components of candidate communication 
+and technical skills.  The feedback provided by  AI was 
+considered to be accurate, consistent and useful in self -
+improvement. 
+ 
+IX. CONCLUSION 
+ 
+The suggested system PREP AI - Customized Mock 
+Interview Using Generative AI is quite effective at simulating 
+the real-life interview scenarios because it utilizes the 
+questions and role-play reactions produced by AI, as well as 
+the voice interaction in  real-time. It gathers immediate 
+feedback in form of NLP-based assessment, assisting a user 
+to enhance communication and technical proficiency. The 
+system addresses the shortcomings of current mock interview 
+platforms as it is personalized, and progress suits are available 
+along with automated evaluation. In general,  PREP AI will 
+improve the interview preparation processes as it will provide 
+learners with an intelligent, interactive, and adaptive 
+environment. 
+ 
+ 
+ 
+REFERENCES 
+ 
+[1]. Brown, T., Mann, B., Ryder, N., Subbiah, M., et 
+al. (2020). Language Models are Few-Shot 
+Learners. Advances in Neural Information 
+Processing Systems, 33, 1877–1901. 
+[2]. Vaswani, A., Shazeer, N., Parmar, N., et al. 
+(2017). Attention Is All You Need. Proceedings of 
+the 31st Conference on Neural Information 
+Processing Systems (NeurIPS), 5998–6008. 
+[3]. Devlin, J., Chang, M.W., Lee, K., & Toutanova, 
+K. (2019). BERT: Pre-training of Deep 
+Bidirectional Transformers for Language 
+Understanding. Proceedings of the NAACL, 4171–
+4186. 
+[4]. Zhang, Y., & Zhao, S. (2021). AI-Driven Virtual 
+Interview System Based on Natural Language 
+Processing. International Journal of Advanced 
+Computer Science and Applications, 12(5), 32–38. 
+[5]. Li, H., & Wang,  J. (2022). Generative AI  for 
+Personalized Learning and Assess ment Systems. 
+Journal of Intelligent Systems, 31(2), 175–186. 
+[6]. Kaur, P., & Singh, A. (2023). A Study on the Role of 
+--- PAGE 6 ---
+Volume 11, Issue 1, January – 2026                               International Journal of Innovative Science and Research Technology 
+ISSN No: -2456-2165                                                                                                              https://doi.org/10.38124/ijisrt/26jan835 
+ 
+ 
+IJISRT26JAN835                                                               www.ijisrt.com                                                                                     1986  
+AI in Enhancing Job Interview Preparation. 
+International Journal of Emerging Technologies in 
+Learning, 18(4), 45–52. 
+[7]. Chen, X., & Huang, L. (2021). Speech-to-Text and 
+NLP Integration for Real-Time Interview Evaluation. 
+IEEE Access, 9, 114932–114940. 
+[8]. Sun, Y., & Li, Z. (2022). AI-Based Mock 
+Interview and Candidate Evaluation Using Deep 
+Learning Techniques . Journal of Artificial 
+Intelligence Research, 73, 221–235. 
+[9]. Rahman, M., & Karim, M. (2023). Human–
+Computer Interaction in Virtual Interview 
+Environments. Procedia Computer  Science, 213, 
+1187–1194. 
+[10]. OpenAI. (2024). Generative Pretrained 
+Transformers (GPT-4 Technical Report). 
+arXiv:2303.08774. 

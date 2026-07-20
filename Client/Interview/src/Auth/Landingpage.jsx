@@ -58,27 +58,27 @@ export default function LandingPage() {
         <div className="text-center mb-16 animate-fade-in">
           <div className="inline-flex items-center gap-2 bg-white/80 backdrop-blur-sm px-6 py-3 rounded-full shadow-lg mb-8 border border-white/20">
             <Star className="w-5 h-5 text-yellow-500 fill-current" />
-            <span className="text-sm font-medium text-gray-700">AI-Powered Interview Excellence</span>
+            <span className="text-sm font-medium text-gray-700">Multi-Agent AI & Gaze Proctoring Platform</span>
             <Star className="w-5 h-5 text-yellow-500 fill-current" />
           </div>
 
           <h1 className="text-3xl lg:text-5xl font-black text-gray-900 mb-6 leading-tight">
             <span className="bg-clip-text text-transparent bg-gradient-to-r from-indigo-600 via-purple-600 to-pink-600 animate-pulse">
-              AI Mock Interview
+              Multi-Agent Technical Interview
             </span>
             <br />
-            <span className="text-gray-800">Platform</span>
+            <span className="text-gray-800">Assessment & Gaze Proctoring Platform</span>
           </h1>
 
 
-          <p className="text-xl text-gray-600 max-w-2xl mx-auto leading-relaxed relative">
-            Transform your interview experience with cutting-edge AI technology
+          <p className="text-xl text-gray-600 max-w-3xl mx-auto leading-relaxed relative">
+            Automated Technical Interview Assessment with Real-Time Gaze-Based Proctoring & Dynamic AI Evaluation
             <span className="absolute -bottom-2 left-1/2 transform -translate-x-1/2 w-24 h-1 bg-gradient-to-r from-indigo-400 to-purple-400 rounded-full"></span>
           </p>
         </div>
         {/* Portal Cards */}
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-8 w-full max-w-5xl">
-          {/* HR Portal Card */}
+          {/* Faculty Portal Card */}
           <button
             onClick={() => window.location.href = '/hr/login'}
             className="group relative bg-white/80 backdrop-blur-sm p-8 rounded-3xl shadow-xl hover:shadow-2xl transform hover:-translate-y-3 transition-all duration-700 border border-white/20 hover:border-purple-200/50 overflow-hidden w-full"
@@ -95,23 +95,23 @@ export default function LandingPage() {
               {/* Large Image Container */}
               <div className="relative mb-8 group-hover:scale-110 transition-transform duration-500">
                 <div className="w-32 h-32 bg-gradient-to-br from-purple-500/10 to-indigo-600/10 rounded-3xl flex items-center justify-center shadow-lg group-hover:shadow-xl transition-all duration-500 p-4">
-                  <img src={teacher} alt="HR & Recruiters" className="w-24 h-24 object-contain" />
+                  <img src={teacher} alt="Faculty & Coordinators" className="w-24 h-24 object-contain" />
                 </div>
                 <div className="absolute inset-0 bg-gradient-to-br from-purple-400/20 to-indigo-500/20 rounded-3xl blur-lg opacity-0 group-hover:opacity-50 transition-opacity duration-500"></div>
               </div>
 
               <h2 className="text-3xl font-bold text-gray-800 mb-4 relative">
-                HR
+                Faculty Portal
                 <span className="absolute -bottom-1 left-1/2 transform -translate-x-1/2 w-0 h-0.5 bg-gradient-to-r from-purple-500 to-indigo-600 group-hover:w-full transition-all duration-500"></span>
               </h2>
 
               <p className="text-gray-600 mb-8 leading-relaxed text-lg">
-                Manage job roles, review interviews, and analyze Student performance with powerful AI insights and analytics.
+                Manage interview drives, track student readiness, review AI interview transcripts, and monitor proctoring audit logs.
               </p>
 
               <div className="w-full bg-gradient-to-r from-purple-500 to-indigo-600 text-white py-4 px-6 rounded-2xl font-semibold text-lg group-hover:from-purple-600 group-hover:to-indigo-700 transition-all duration-500 shadow-lg group-hover:shadow-xl relative overflow-hidden">
                 <span className="relative z-10 flex items-center justify-center gap-2">
-                  HR Portal
+                  Faculty Portal
                   <ArrowRight className="w-5 h-5 transform group-hover:translate-x-1 transition-transform duration-300" />
                 </span>
                 <div className="absolute inset-0 bg-gradient-to-r from-white/10 to-white/20 opacity-0 group-hover:opacity-100 transition-opacity duration-500"></div>
@@ -143,12 +143,12 @@ export default function LandingPage() {
               </div>
 
               <h2 className="text-3xl font-bold text-gray-800 mb-4 relative">
-                Student Test
+                Student Test Portal
                 <span className="absolute -bottom-1 left-1/2 transform -translate-x-1/2 w-0 h-0.5 bg-gradient-to-r from-orange-500 to-pink-600 group-hover:w-full transition-all duration-500"></span>
               </h2>
 
               <p className="text-gray-600 mb-8 leading-relaxed text-lg">
-                Practice interviews with AI, receive instant feedback, and boost your confidence to land your dream job.
+                Experience 4-round adaptive assessments: Face Verification, Adaptive Aptitude, Code Sandbox, and Multi-Agent AI Interviews.
               </p>
 
               <div className="w-full bg-gradient-to-r from-orange-500 to-pink-600 text-white py-4 px-6 rounded-2xl font-semibold text-lg group-hover:from-orange-600 group-hover:to-pink-700 transition-all duration-500 shadow-lg group-hover:shadow-xl relative overflow-hidden">
@@ -164,7 +164,7 @@ export default function LandingPage() {
 
         {/* Bottom CTA */}
         <div className="mt-16 text-center">
-          <p className="text-gray-600 text-lg mb-4">Ready to revolutionize your interview experience?</p>
+          <p className="text-gray-600 text-lg mb-4">Empowering campus placement readiness with AI & automated proctoring</p>
           <div className="flex items-center justify-center gap-2">
             <div className="w-2 h-2 bg-indigo-400 rounded-full animate-pulse"></div>
             <div className="w-2 h-2 bg-purple-400 rounded-full animate-pulse delay-100"></div>

@@ -131,10 +131,10 @@ export default function Login() {
             className="text-center mt-10"
           >
             <h2 className="text-4xl font-bold text-gray-800 mb-4 tracking-tight">
-              Empower Your Workforce
+              Empower Campus Placement
             </h2>
             <p className="text-lg text-gray-600 max-w-md mx-auto leading-relaxed">
-              Streamline your recruitment process with AI-powered insights and tools.
+              Automated Technical Interview Assessment with Multi-Agent AI & Real-Time Gaze Proctoring.
             </p>
           </motion.div>
         </div>
@@ -154,13 +154,13 @@ export default function Login() {
               transition={{ type: "spring", stiffness: 300 }}
               className="inline-flex p-4 rounded-3xl bg-gradient-to-br from-blue-600 to-purple-700 shadow-xl shadow-blue-500/20 mb-6"
             >
-              <img src={hrImage} alt="HR Portal" className="w-12 h-12 object-contain" />
+              <img src={hrImage} alt="Faculty Portal" className="w-12 h-12 object-contain" />
             </motion.div>
             <h1 className="text-4xl font-black text-transparent bg-clip-text bg-gradient-to-r from-blue-600 via-purple-600 to-indigo-600 mb-3 tracking-tight">
-              HR Portal
+              Faculty Portal
             </h1>
             <p className="text-gray-500 text-lg">
-              Sign in to manage your recruitment
+              Sign in to manage interview drives & proctoring logs
             </p>
           </div>
 
@@ -192,7 +192,7 @@ export default function Login() {
                   onChange={(e) => setLoginForm({ ...loginForm, email: e.target.value })}
                   required
                   className="block w-full pl-12 pr-4 py-4 bg-gray-50/50 border border-gray-200 rounded-2xl text-gray-900 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-all duration-300 hover:bg-white focus:bg-white shadow-sm hover:shadow-md"
-                  placeholder="hr@company.com"
+                  placeholder="faculty@kongu.edu"
                 />
               </motion.div>
 

@@ -25,6 +25,7 @@ from companyscrap_bp import companyscrap_bp
 from Domainforum import domainforum_bp, init_domainforum
 from practicequiz_bp import practicequiz_bp
 from hrround import hrround_bp
+from technical_interview_bp import tech_interview_bp
 
 # --- CORS & Session setup ---
 app.secret_key = os.environ.get("FLASK_SECRET_KEY", "dev-secret-key")
@@ -41,6 +42,7 @@ app.register_blueprint(companyscrap_bp)
 app.register_blueprint(domainforum_bp)
 app.register_blueprint(practicequiz_bp)
 app.register_blueprint(hrround_bp)
+app.register_blueprint(tech_interview_bp)
 
 # Initialize services that require app context
 with app.app_context():
