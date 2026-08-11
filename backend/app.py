@@ -205,6 +205,8 @@ def create_role():
             "maxStudents": int(data.get("maxStudents")),
             "seatsAvailable": int(data.get("seatsAvailable")),
             "package": data.get("package"),
+            "assignedStudents": data.get("assignedStudents", []),
+            "assignedGroups": data.get("assignedGroups", []),
             "studentsCount": 0,
             "status": "Draft",
             "createdAt": datetime.utcnow()
@@ -272,6 +274,14 @@ def create_student():
         if isinstance(assigned_rounds, str):
             assigned_rounds = [assigned_rounds]
 
+        # Handle optional group assignments (students can belong to multiple groups)
+        group_ids = data.get("groupIds", [])
+        group_names = []
+        for gid in group_ids:
+            grp = db.student_groups.find_one({"_id": ObjectId(gid)})
+            if grp:
+                group_names.append(grp["name"])
+
         student = {
             "hrEmail": teacher_email,
             "teacherEmail": teacher_email,
@@ -284,6 +294,8 @@ def create_student():
             "faceDescriptor": face_descriptor,
             "idCardPhoto": data.get("idCardPhoto", ""),
             "hasFaceRegistered": bool(len(face_descriptor) > 0),
+            "groupIds": group_ids,
+            "groupNames": group_names,
             "status": "Eligible",
             "createdAt": datetime.utcnow()
         }
@@ -642,6 +654,231 @@ def get_test_results():
 
     except Exception as e:
         app.logger.error(f"Get aggregated test results error: {e}")
+        return jsonify({"error": "An internal server error occurred"}), 500
+
+
+# ================================================================================================
+# Student Groups Endpoints
+# ================================================================================================
+
+@app.route('/api/student-groups', methods=['GET'])
+def get_student_groups():
+    """Gets all student groups created by a specific HR user."""
+    hr_email = request.args.get('hrEmail')
+    if not hr_email:
+        return jsonify({"error": "hrEmail query parameter is required"}), 400
+    
+    try:
+        groups_cursor = db.student_groups.find({"hrEmail": hr_email})
+        groups_list = []
+        for group in groups_cursor:
+            group['_id'] = str(group['_id'])
+            # Count students in this group
+            student_count = db.students.count_documents({
+                "$or": [{"hrEmail": hr_email}, {"teacherEmail": hr_email}],
+                "groupIds": str(group['_id'])
+            })
+            group['studentCount'] = student_count
+            groups_list.append(group)
+        return jsonify(groups_list), 200
+    except Exception as e:
+        app.logger.error(f"Get student groups error: {e}")
+        return jsonify({"error": "An internal server error occurred"}), 500
+
+@app.route('/api/student-groups', methods=['POST'])
+def create_student_group():
+    """Creates a new student group for the HR user."""
+    try:
+        data = request.get_json()
+        hr_email = data.get("hrEmail")
+        name = data.get("name")
+        color = data.get("color", "#3B82F6")  # Default blue
+
+        if not hr_email or not name:
+            return jsonify({"error": "hrEmail and name are required"}), 400
+
+        # Check for duplicate group name for this HR
+        existing = db.student_groups.find_one({"hrEmail": hr_email, "name": name})
+        if existing:
+            return jsonify({"error": f"Group '{name}' already exists"}), 409
+
+        group = {
+            "hrEmail": hr_email,
+            "name": name,
+            "color": color,
+            "createdAt": datetime.utcnow()
+        }
+        result = db.student_groups.insert_one(group)
+        group['_id'] = str(result.inserted_id)
+        group['studentCount'] = 0
+        return jsonify(group), 201
+    except Exception as e:
+        app.logger.error(f"Create student group error: {e}")
+        return jsonify({"error": "An internal server error occurred"}), 500
+
+@app.route('/api/student-groups/<group_id>', methods=['PUT'])
+def update_student_group(group_id):
+    """Updates a student group's name or color."""
+    try:
+        data = request.get_json()
+        update_fields = {}
+        if "name" in data:
+            update_fields["name"] = data["name"]
+        if "color" in data:
+            update_fields["color"] = data["color"]
+
+        if not update_fields:
+            return jsonify({"error": "No fields to update"}), 400
+
+        update_fields["updatedAt"] = datetime.utcnow()
+
+        result = db.student_groups.update_one(
+            {"_id": ObjectId(group_id)},
+            {"$set": update_fields}
+        )
+
+        if result.matched_count == 0:
+            return jsonify({"error": "Group not found"}), 404
+
+        # If name was updated, also update the groupNames array in all students that have this group
+        if "name" in data:
+            old_group = db.student_groups.find_one({"_id": ObjectId(group_id)})
+            if old_group:
+                db.students.update_many(
+                    {"groupIds": group_id},
+                    {"$set": {f"groupNames.$[elem]": data["name"]}},
+                )
+                # Simpler approach: rebuild groupNames for affected students
+                affected_students = db.students.find({"groupIds": group_id})
+                for student in affected_students:
+                    group_ids = student.get("groupIds", [])
+                    new_names = []
+                    for gid in group_ids:
+                        g = db.student_groups.find_one({"_id": ObjectId(gid)})
+                        if g:
+                            new_names.append(g["name"])
+                    db.students.update_one(
+                        {"_id": student["_id"]},
+                        {"$set": {"groupNames": new_names}}
+                    )
+
+        updated_group = db.student_groups.find_one({"_id": ObjectId(group_id)})
+        updated_group['_id'] = str(updated_group['_id'])
+        return jsonify(updated_group), 200
+    except Exception as e:
+        app.logger.error(f"Update student group error: {e}")
+        return jsonify({"error": "An internal server error occurred"}), 500
+
+@app.route('/api/student-groups/<group_id>', methods=['DELETE'])
+def delete_student_group(group_id):
+    """Deletes a student group and removes it from all assigned students."""
+    try:
+        group = db.student_groups.find_one({"_id": ObjectId(group_id)})
+        if not group:
+            return jsonify({"error": "Group not found"}), 404
+
+        group_name = group.get("name", "")
+
+        # Remove this group from all students who have it
+        db.students.update_many(
+            {"groupIds": group_id},
+            {
+                "$pull": {"groupIds": group_id, "groupNames": group_name}
+            }
+        )
+
+        # Delete the group
+        db.student_groups.delete_one({"_id": ObjectId(group_id)})
+
+        return jsonify({"message": f"Group '{group_name}' deleted successfully"}), 200
+    except Exception as e:
+        app.logger.error(f"Delete student group error: {e}")
+        return jsonify({"error": "An internal server error occurred"}), 500
+
+@app.route('/api/students/<student_id>/groups', methods=['PUT'])
+def update_student_groups(student_id):
+    """Assigns or updates the groups for a specific student. Students can belong to multiple groups."""
+    try:
+        data = request.get_json()
+        group_ids = data.get("groupIds", [])  # Array of group ID strings
+
+        # Validate that all group IDs exist
+        group_names = []
+        for gid in group_ids:
+            group = db.student_groups.find_one({"_id": ObjectId(gid)})
+            if not group:
+                return jsonify({"error": f"Group with ID {gid} not found"}), 404
+            group_names.append(group["name"])
+
+        result = db.students.update_one(
+            {"_id": ObjectId(student_id)},
+            {"$set": {
+                "groupIds": group_ids,
+                "groupNames": group_names,
+                "updatedAt": datetime.utcnow()
+            }}
+        )
+
+        if result.matched_count == 0:
+            return jsonify({"error": "Student not found"}), 404
+
+        return jsonify({
+            "message": "Student groups updated successfully",
+            "groupIds": group_ids,
+            "groupNames": group_names
+        }), 200
+    except Exception as e:
+        app.logger.error(f"Update student groups error: {e}")
+        return jsonify({"error": "An internal server error occurred"}), 500
+
+@app.route('/api/students/bulk-group', methods=['PUT'])
+def bulk_assign_student_groups():
+    """Assigns a group to multiple students at once."""
+    try:
+        data = request.get_json()
+        student_ids = data.get("studentIds", [])
+        group_id = data.get("groupId")
+        action = data.get("action", "add")  # "add" or "remove"
+
+        if not student_ids or not group_id:
+            return jsonify({"error": "studentIds and groupId are required"}), 400
+
+        group = db.student_groups.find_one({"_id": ObjectId(group_id)})
+        if not group:
+            return jsonify({"error": "Group not found"}), 404
+
+        group_name = group["name"]
+        updated_count = 0
+
+        for sid in student_ids:
+            try:
+                if action == "add":
+                    result = db.students.update_one(
+                        {"_id": ObjectId(sid)},
+                        {
+                            "$addToSet": {"groupIds": group_id, "groupNames": group_name},
+                            "$set": {"updatedAt": datetime.utcnow()}
+                        }
+                    )
+                elif action == "remove":
+                    result = db.students.update_one(
+                        {"_id": ObjectId(sid)},
+                        {
+                            "$pull": {"groupIds": group_id, "groupNames": group_name},
+                            "$set": {"updatedAt": datetime.utcnow()}
+                        }
+                    )
+                if result.modified_count > 0:
+                    updated_count += 1
+            except Exception:
+                continue
+
+        return jsonify({
+            "message": f"{updated_count} students updated successfully",
+            "updatedCount": updated_count
+        }), 200
+    except Exception as e:
+        app.logger.error(f"Bulk assign student groups error: {e}")
         return jsonify({"error": "An internal server error occurred"}), 500
 
 
