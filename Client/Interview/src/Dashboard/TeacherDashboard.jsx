@@ -1,40 +1,139 @@
-import React, { useState, useEffect, useContext } from 'react';
-import { Book, Plus, Calendar, Settings, Users, Upload, Mail, Trash2, Edit3 } from 'lucide-react';
+import React, { useState, useEffect, useContext, useRef } from 'react';
+import { Book, Plus, Calendar, Settings, Users, Upload, Mail, Trash2, Edit3, ShieldCheck, AlertTriangle, Camera, CheckCircle2, Image as ImageIcon, RefreshCw, Eye } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { AuthContext } from '../context/AuthContext';
+import * as faceapi from 'face-api.js';
 
 export default function TeacherDashboard() {
   const [activeTab, setActiveTab] = useState('dashboard');
   const [students, setStudents] = useState([]);
   const [selectedFile, setSelectedFile] = useState(null);
+  const [modelsLoaded, setModelsLoaded] = useState(false);
+  const [isExtractingFace, setIsExtractingFace] = useState(false);
+  const [faceExtractionStatus, setFaceExtractionStatus] = useState(null); // 'SUCCESS', 'FAILED', null
+  const [idCardPreview, setIdCardPreview] = useState(null);
+  const [croppedFacePreview, setCroppedFacePreview] = useState(null);
+  
   const [newStudent, setNewStudent] = useState({
     name: '',
     email: '',
     rollNo: '',
     role: 'Student', // Default role
     password: '',
-    assignedRounds: ['coding'] // Default to coding only
+    assignedRounds: ['coding'], // Default to coding only
+    faceDescriptor: [],
+    idCardPhoto: ''
   });
   const [error, setError] = useState('');
+  const [successMsg, setSuccessMsg] = useState('');
   const { isTeacherAuthenticated, teacherData, handleTeacherLogout } = useContext(AuthContext);
   const navigate = useNavigate();
 
+  // Load face-api AI models once on component mount
+  useEffect(() => {
+    const loadModels = async () => {
+      try {
+        const uri = '/Face_AI_Models';
+        await Promise.all([
+          faceapi.nets.ssdMobilenetv1.loadFromUri(uri),
+          faceapi.nets.faceLandmark68Net.loadFromUri(uri),
+          faceapi.nets.faceRecognitionNet.loadFromUri(uri)
+        ]);
+        setModelsLoaded(true);
+      } catch (err) {
+        console.error('Failed to load Face-AI models:', err);
+      }
+    };
+    loadModels();
+  }, []);
+
+  const fetchStudents = async () => {
+    if (!teacherData?.email) return;
+    try {
+      setError('');
+      const response = await fetch(`http://localhost:5000/api/students?teacherEmail=${encodeURIComponent(teacherData.email)}`);
+      if (!response.ok) throw new Error('Failed to fetch students');
+      const data = await response.json();
+      setStudents(data);
+    } catch (err) {
+      setError(err.message);
+    }
+  };
+
   useEffect(() => {
     if (isTeacherAuthenticated && teacherData?.email) {
-      const fetchStudents = async () => {
-        try {
-          setError('');
-          const response = await fetch(`http://localhost:5000/api/students?teacherEmail=${encodeURIComponent(teacherData.email)}`);
-          if (!response.ok) throw new Error('Failed to fetch students');
-          const data = await response.json();
-          setStudents(data);
-        } catch (err) {
-          setError(err.message);
-        }
-      };
       fetchStudents();
     }
   }, [isTeacherAuthenticated, teacherData]);
+
+  // Handle ID Card file upload and face embedding extraction
+  const handleIdCardUpload = async (e) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    if (!modelsLoaded) {
+      setError('AI Face Detection models are still initializing. Please wait a few seconds.');
+      return;
+    }
+
+    setIsExtractingFace(true);
+    setFaceExtractionStatus(null);
+    setError('');
+
+    const reader = new FileReader();
+    reader.onload = async () => {
+      const base64Data = reader.result;
+      setIdCardPreview(base64Data);
+
+      try {
+        const img = await faceapi.fetchImage(base64Data);
+        const detection = await faceapi
+          .detectSingleFace(img)
+          .withFaceLandmarks()
+          .withFaceDescriptor();
+
+        if (!detection) {
+          setFaceExtractionStatus('FAILED');
+          setCroppedFacePreview(null);
+          setNewStudent(prev => ({ ...prev, faceDescriptor: [], idCardPhoto: '' }));
+          setError('No clear face detected on the ID card. Please upload a clear photo or ID card image.');
+        } else {
+          const descriptorArray = Array.from(detection.descriptor);
+          
+          // Crop detected face to make a thumbnail preview
+          const box = detection.detection.box;
+          const canvas = document.createElement('canvas');
+          const padding = Math.min(box.width, box.height) * 0.2;
+          const cropX = Math.max(0, box.x - padding);
+          const cropY = Math.max(0, box.y - padding);
+          const cropW = Math.min(img.width - cropX, box.width + padding * 2);
+          const cropH = Math.min(img.height - cropY, box.height + padding * 2);
+
+          canvas.width = cropW;
+          canvas.height = cropH;
+          const ctx = canvas.getContext('2d');
+          ctx.drawImage(img, cropX, cropY, cropW, cropH, 0, 0, cropW, cropH);
+          const croppedFaceUrl = canvas.toDataURL('image/jpeg', 0.85);
+
+          setCroppedFacePreview(croppedFaceUrl);
+          setFaceExtractionStatus('SUCCESS');
+          setNewStudent(prev => ({
+            ...prev,
+            faceDescriptor: descriptorArray,
+            idCardPhoto: croppedFaceUrl
+          }));
+          setSuccessMsg('Face detected & 128-D biometric embedding vector extracted successfully!');
+        }
+      } catch (err) {
+        console.error('Error processing ID card face:', err);
+        setFaceExtractionStatus('FAILED');
+        setError('Error extracting face embedding: ' + err.message);
+      } finally {
+        setIsExtractingFace(false);
+      }
+    };
+    reader.readAsDataURL(file);
+  };
 
   const handleAddStudent = async (e) => {
     e.preventDefault();
@@ -44,14 +143,16 @@ export default function TeacherDashboard() {
     }
     try {
       setError('');
+      setSuccessMsg('');
       const response = await fetch('http://localhost:5000/api/students', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ 
           ...newStudent, 
           teacherEmail: teacherData.email,
-          // Convert round selection to array format
-          assignedRounds: newStudent.assignedRounds
+          assignedRounds: newStudent.assignedRounds,
+          faceDescriptor: newStudent.faceDescriptor,
+          idCardPhoto: newStudent.idCardPhoto
         })
       });
       if (!response.ok) {
@@ -60,14 +161,22 @@ export default function TeacherDashboard() {
       }
       const createdStudent = await response.json();
       setStudents([...students, createdStudent]);
+      setSuccessMsg(`Student "${newStudent.name}" added successfully with ${newStudent.faceDescriptor.length > 0 ? 'biometric face embedding' : 'standard profile'}!`);
+      
+      // Reset form
       setNewStudent({
         name: '',
         email: '',
         rollNo: '',
         role: 'Student',
         password: '',
-        assignedRounds: ['coding']
+        assignedRounds: ['coding'],
+        faceDescriptor: [],
+        idCardPhoto: ''
       });
+      setIdCardPreview(null);
+      setCroppedFacePreview(null);
+      setFaceExtractionStatus(null);
     } catch (err) {
       setError(err.message);
     }
@@ -121,7 +230,6 @@ export default function TeacherDashboard() {
       }
     }
 
-    // Ensure at least one round is selected
     if (updatedRounds.length === 0) {
       updatedRounds = ['coding'];
     }
@@ -203,6 +311,12 @@ export default function TeacherDashboard() {
               <span className="block sm:inline">{error}</span>
             </div>
           )}
+          {successMsg && (
+            <div className="bg-green-100 border border-green-400 text-green-700 px-4 py-3 rounded-lg relative mb-6 flex items-center gap-2" role="alert">
+              <CheckCircle2 className="w-5 h-5 text-green-600 shrink-0" />
+              <span>{successMsg}</span>
+            </div>
+          )}
           {activeTab === 'dashboard' && <DashboardContent students={students} />}
           {activeTab === 'students' && (
             <StudentsContent
@@ -215,6 +329,12 @@ export default function TeacherDashboard() {
               setSelectedFile={setSelectedFile}
               handleRoundSelection={handleRoundSelection}
               getRoundDisplayText={getRoundDisplayText}
+              modelsLoaded={modelsLoaded}
+              isExtractingFace={isExtractingFace}
+              faceExtractionStatus={faceExtractionStatus}
+              idCardPreview={idCardPreview}
+              croppedFacePreview={croppedFacePreview}
+              handleIdCardUpload={handleIdCardUpload}
             />
           )}
         </main>
@@ -231,13 +351,16 @@ const DashboardContent = ({ students }) => {
   const allRoundsStudents = students.filter(s => 
     s.assignedRounds && s.assignedRounds.length === 3
   ).length;
+  const biometricVerifiedStudents = students.filter(s => 
+    s.hasFaceRegistered || (s.faceDescriptor && s.faceDescriptor.length > 0)
+  ).length;
 
   return (
     <div>
       <h2 className="text-2xl font-bold text-gray-900 mb-2">Dashboard Overview</h2>
-      <p className="text-gray-600 mb-6">Your personal overview of students and their assigned rounds.</p>
+      <p className="text-gray-600 mb-6">Your personal overview of students, assigned rounds, and biometric verification.</p>
       
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+      <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
         <div className="bg-white p-6 rounded-xl shadow-sm border">
           <div className="flex items-center justify-between">
             <div>
@@ -253,11 +376,23 @@ const DashboardContent = ({ students }) => {
         <div className="bg-white p-6 rounded-xl shadow-sm border">
           <div className="flex items-center justify-between">
             <div>
+              <p className="text-sm font-medium text-gray-600">Biometrics Verified</p>
+              <p className="text-3xl font-bold text-green-600">{biometricVerifiedStudents}</p>
+            </div>
+            <div className="w-12 h-12 bg-green-100 rounded-lg flex items-center justify-center">
+              <ShieldCheck className="w-6 h-6 text-green-600" />
+            </div>
+          </div>
+        </div>
+
+        <div className="bg-white p-6 rounded-xl shadow-sm border">
+          <div className="flex items-center justify-between">
+            <div>
               <p className="text-sm font-medium text-gray-600">Coding Only</p>
               <p className="text-3xl font-bold text-gray-900">{codingOnlyStudents}</p>
             </div>
-            <div className="w-12 h-12 bg-green-100 rounded-lg flex items-center justify-center">
-              <Calendar className="w-6 h-6 text-green-600" />
+            <div className="w-12 h-12 bg-yellow-100 rounded-lg flex items-center justify-center">
+              <Calendar className="w-6 h-6 text-yellow-600" />
             </div>
           </div>
         </div>
@@ -287,16 +422,34 @@ const StudentsContent = ({
   selectedFile, 
   setSelectedFile, 
   handleRoundSelection,
-  getRoundDisplayText 
+  getRoundDisplayText,
+  modelsLoaded,
+  isExtractingFace,
+  faceExtractionStatus,
+  idCardPreview,
+  croppedFacePreview,
+  handleIdCardUpload
 }) => (
   <div>
-    <h2 className="text-2xl font-bold text-gray-900 mb-6">Student Management</h2>
+    <div className="flex items-center justify-between mb-6">
+      <div>
+        <h2 className="text-2xl font-bold text-gray-900">Student & Biometric Management</h2>
+        <p className="text-sm text-gray-500">Register students and extract 128-D face embeddings from ID cards for automated anti-impersonation proctoring.</p>
+      </div>
+      <div className="flex items-center gap-2 bg-indigo-50 border border-indigo-100 text-indigo-700 px-3 py-1.5 rounded-lg text-xs font-medium">
+        <span className={`w-2 h-2 rounded-full ${modelsLoaded ? 'bg-green-500' : 'bg-yellow-500 animate-ping'}`} />
+        {modelsLoaded ? 'Face-AI Engine Ready (128-D)' : 'Initializing Face-AI...'}
+      </div>
+    </div>
     
     <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
       {/* Add Student Form */}
       <div className="lg:col-span-1">
         <div className="bg-white p-6 rounded-xl shadow-sm border mb-6">
-          <h3 className="text-lg font-semibold text-gray-900 mb-4">Add New Student</h3>
+          <h3 className="text-lg font-semibold text-gray-900 mb-4 flex items-center gap-2">
+            <Plus className="w-5 h-5 text-yellow-600" />
+            Add New Student
+          </h3>
           <form onSubmit={handleAddStudent} className="space-y-4">
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-1">Student Name</label>
@@ -305,7 +458,7 @@ const StudentsContent = ({
                 placeholder="Full Name"
                 value={newStudent.name}
                 onChange={(e) => setNewStudent({ ...newStudent, name: e.target.value })}
-                className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-yellow-500 focus:border-transparent"
+                className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-yellow-500 focus:border-transparent text-sm"
                 required
               />
             </div>
@@ -317,7 +470,7 @@ const StudentsContent = ({
                 placeholder="student@example.com"
                 value={newStudent.email}
                 onChange={(e) => setNewStudent({ ...newStudent, email: e.target.value })}
-                className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-yellow-500 focus:border-transparent"
+                className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-yellow-500 focus:border-transparent text-sm"
                 required
               />
             </div>
@@ -329,9 +482,65 @@ const StudentsContent = ({
                 placeholder="e.g., 20BCE1234"
                 value={newStudent.rollNo}
                 onChange={(e) => setNewStudent({ ...newStudent, rollNo: e.target.value })}
-                className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-yellow-500 focus:border-transparent"
+                className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-yellow-500 focus:border-transparent text-sm"
                 required
               />
+            </div>
+
+            {/* Student ID Card / Biometric Photo Extraction */}
+            <div className="bg-gray-50 p-4 rounded-xl border border-dashed border-gray-300">
+              <label className="block text-sm font-semibold text-gray-800 mb-1 flex items-center justify-between">
+                <span className="flex items-center gap-1.5">
+                  <ShieldCheck className="w-4 h-4 text-indigo-600" />
+                  Student ID Card / Face Photo
+                </span>
+                <span className="text-xs text-gray-500 font-normal">Extracts 128-D Vector</span>
+              </label>
+              <p className="text-xs text-gray-500 mb-3">
+                Upload institutional ID card image. The system extracts the biometric face embedding for login verification.
+              </p>
+
+              <div className="space-y-3">
+                <input
+                  type="file"
+                  accept="image/png, image/jpeg, image/jpg"
+                  onChange={handleIdCardUpload}
+                  className="block w-full text-xs text-gray-500 file:mr-2 file:py-2 file:px-3 file:rounded-md file:border-0 file:text-xs file:font-semibold file:bg-yellow-50 file:text-yellow-700 hover:file:bg-yellow-100 cursor-pointer"
+                />
+
+                {isExtractingFace && (
+                  <div className="flex items-center gap-2 p-3 bg-blue-50 border border-blue-200 rounded-lg text-blue-700 text-xs font-medium animate-pulse">
+                    <RefreshCw className="w-4 h-4 animate-spin text-blue-600" />
+                    <span>Detecting face & computing 128-D embedding vector...</span>
+                  </div>
+                )}
+
+                {faceExtractionStatus === 'SUCCESS' && croppedFacePreview && (
+                  <div className="flex items-center gap-3 p-3 bg-green-50 border border-green-200 rounded-lg">
+                    <img 
+                      src={croppedFacePreview} 
+                      alt="Extracted Face" 
+                      className="w-12 h-12 rounded-full object-cover border-2 border-green-500 shadow-sm"
+                    />
+                    <div className="flex-1 min-w-0">
+                      <p className="text-xs font-semibold text-green-800 flex items-center gap-1">
+                        <CheckCircle2 className="w-3.5 h-3.5 text-green-600" />
+                        Face Embedding Extracted!
+                      </p>
+                      <p className="text-[11px] text-green-700 truncate">
+                        128-Dimensional vector ready for login verification
+                      </p>
+                    </div>
+                  </div>
+                )}
+
+                {faceExtractionStatus === 'FAILED' && (
+                  <div className="flex items-center gap-2 p-2.5 bg-red-50 border border-red-200 rounded-lg text-red-700 text-xs">
+                    <AlertTriangle className="w-4 h-4 text-red-600 shrink-0" />
+                    <span>No clear face found on ID card. Please upload a clearer image.</span>
+                  </div>
+                )}
+              </div>
             </div>
             
             <div>
@@ -339,7 +548,7 @@ const StudentsContent = ({
               <select
                 value={newStudent.role}
                 onChange={(e) => setNewStudent({ ...newStudent, role: e.target.value })}
-                className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-yellow-500 focus:border-transparent"
+                className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-yellow-500 focus:border-transparent text-sm"
                 required
               >
                 <option value="Student">Student</option>
@@ -392,14 +601,14 @@ const StudentsContent = ({
                 placeholder="Create a strong password"
                 value={newStudent.password}
                 onChange={(e) => setNewStudent({ ...newStudent, password: e.target.value })}
-                className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-yellow-500 focus:border-transparent"
+                className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-yellow-500 focus:border-transparent text-sm"
                 required
               />
             </div>
             
             <button
               type="submit"
-              className="w-full bg-gradient-to-r from-yellow-500 to-orange-600 text-white py-2.5 rounded-lg font-medium hover:from-yellow-600 hover:to-orange-700 transition-all duration-200 flex items-center justify-center space-x-2"
+              className="w-full bg-gradient-to-r from-yellow-500 to-orange-600 text-white py-2.5 rounded-lg font-medium hover:from-yellow-600 hover:to-orange-700 transition-all duration-200 flex items-center justify-center space-x-2 shadow-sm"
             >
               <Plus className="w-4 h-4" />
               <span>Add Student</span>
@@ -409,7 +618,10 @@ const StudentsContent = ({
 
         {/* Excel Upload */}
         <div className="bg-white p-6 rounded-xl shadow-sm border">
-          <h3 className="text-lg font-semibold text-gray-900 mb-4">Upload Excel File</h3>
+          <h3 className="text-lg font-semibold text-gray-900 mb-4 flex items-center gap-2">
+            <Upload className="w-5 h-5 text-yellow-600" />
+            Upload Excel File
+          </h3>
           <form onSubmit={handleFileUpload} className="space-y-4">
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-1">Select Excel File</label>
@@ -417,16 +629,16 @@ const StudentsContent = ({
                 type="file"
                 accept=".xlsx, .xls"
                 onChange={(e) => setSelectedFile(e.target.files[0])}
-                className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-yellow-500 focus:border-transparent"
+                className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-yellow-500 focus:border-transparent text-sm"
                 required
               />
-              <p className="text-sm text-gray-500 mt-1">
+              <p className="text-xs text-gray-500 mt-1">
                 Excel should contain: name, email, rollNo (optional), rounds (optional)
               </p>
             </div>
             <button
               type="submit"
-              className="w-full bg-gradient-to-r from-yellow-500 to-orange-600 text-white py-2.5 rounded-lg font-medium hover:from-yellow-600 hover:to-orange-700 transition-all duration-200 flex items-center justify-center space-x-2"
+              className="w-full bg-gradient-to-r from-yellow-500 to-orange-600 text-white py-2.5 rounded-lg font-medium hover:from-yellow-600 hover:to-orange-700 transition-all duration-200 flex items-center justify-center space-x-2 shadow-sm"
             >
               <Upload className="w-4 h-4" />
               <span>Upload & Assign</span>
@@ -438,72 +650,101 @@ const StudentsContent = ({
       {/* Students Table */}
       <div className="lg:col-span-2">
         <div className="bg-white rounded-xl shadow-sm border overflow-hidden">
-          <div className="px-6 py-4 border-b border-gray-200">
-            <h3 className="text-lg font-semibold text-gray-900">Students List</h3>
+          <div className="px-6 py-4 border-b border-gray-200 flex items-center justify-between">
+            <h3 className="text-lg font-semibold text-gray-900">Enrolled Students & Biometrics</h3>
+            <span className="text-xs text-gray-500 bg-gray-100 px-2.5 py-1 rounded-full font-medium">
+              Total: {students.length}
+            </span>
           </div>
           
           <div className="overflow-x-auto">
             <table className="min-w-full divide-y divide-gray-200">
               <thead className="bg-gray-50">
                 <tr>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Name</th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Roll No</th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Assigned Rounds</th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Actions</th>
+                  <th className="px-5 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Student</th>
+                  <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Roll No</th>
+                  <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Assigned Rounds</th>
+                  <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">ID Biometrics</th>
+                  <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Actions</th>
                 </tr>
               </thead>
               <tbody className="bg-white divide-y divide-gray-200">
-                {students.length > 0 ? students.map(student => (
-                  <tr key={student._id} className="hover:bg-gray-50">
-                    <td className="px-6 py-4 whitespace-nowrap">
-                      <div className="flex items-center">
-                        <div className="w-10 h-10 bg-gradient-to-r from-yellow-400 to-orange-500 rounded-full flex-shrink-0 flex items-center justify-center">
-                          <span className="text-white font-medium text-sm">
-                            {student.name?.charAt(0)?.toUpperCase() || 'S'}
-                          </span>
+                {students.length > 0 ? students.map(student => {
+                  const hasBiometrics = student.hasFaceRegistered || (student.faceDescriptor && student.faceDescriptor.length > 0);
+                  return (
+                    <tr key={student._id} className="hover:bg-gray-50 transition-colors">
+                      <td className="px-5 py-4 whitespace-nowrap">
+                        <div className="flex items-center">
+                          {student.idCardPhoto ? (
+                            <img 
+                              src={student.idCardPhoto} 
+                              alt={student.name} 
+                              className="w-10 h-10 rounded-full object-cover border border-gray-200 shadow-sm"
+                            />
+                          ) : (
+                            <div className="w-10 h-10 bg-gradient-to-r from-yellow-400 to-orange-500 rounded-full flex-shrink-0 flex items-center justify-center shadow-sm">
+                              <span className="text-white font-semibold text-sm">
+                                {student.name?.charAt(0)?.toUpperCase() || 'S'}
+                              </span>
+                            </div>
+                          )}
+                          <div className="ml-3.5">
+                            <div className="text-sm font-semibold text-gray-900">{student.name}</div>
+                            <div className="text-xs text-gray-500">{student.email}</div>
+                          </div>
                         </div>
-                        <div className="ml-4">
-                          <div className="text-sm font-medium text-gray-900">{student.name}</div>
-                          <div className="text-sm text-gray-500">{student.email}</div>
+                      </td>
+                      <td className="px-4 py-4 whitespace-nowrap text-sm text-gray-700 font-mono font-medium">{student.rollNo}</td>
+                      <td className="px-4 py-4 whitespace-nowrap">
+                        <div className="flex flex-wrap gap-1">
+                          {student.assignedRounds?.map(round => (
+                            <span key={round} className="px-2 py-0.5 text-xs font-medium rounded-full bg-yellow-100 text-yellow-800">
+                              {round.charAt(0).toUpperCase() + round.slice(1)}
+                            </span>
+                          )) || (
+                            <span className="px-2 py-0.5 text-xs font-medium rounded-full bg-gray-100 text-gray-800">
+                              Coding
+                            </span>
+                          )}
                         </div>
-                      </div>
-                    </td>
-                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">{student.rollNo}</td>
-                    <td className="px-6 py-4 whitespace-nowrap">
-                      <div className="flex flex-wrap gap-1">
-                        {student.assignedRounds?.map(round => (
-                          <span key={round} className="px-2 py-1 text-xs font-medium rounded-full bg-yellow-100 text-yellow-800">
-                            {round.charAt(0).toUpperCase() + round.slice(1)}
+                      </td>
+                      <td className="px-4 py-4 whitespace-nowrap">
+                        {hasBiometrics ? (
+                          <span className="inline-flex items-center gap-1 px-2.5 py-1 text-xs font-semibold rounded-full bg-green-50 text-green-700 border border-green-200 shadow-sm">
+                            <ShieldCheck className="w-3.5 h-3.5 text-green-600" />
+                            Verified (128-D)
                           </span>
-                        )) || (
-                          <span className="px-2 py-1 text-xs font-medium rounded-full bg-gray-100 text-gray-800">
-                            No rounds assigned
+                        ) : (
+                          <span className="inline-flex items-center gap-1 px-2.5 py-1 text-xs font-medium rounded-full bg-amber-50 text-amber-700 border border-amber-200">
+                            <AlertTriangle className="w-3.5 h-3.5 text-amber-500" />
+                            No ID Photo
                           </span>
                         )}
-                      </div>
-                    </td>
-                    <td className="px-6 py-4 whitespace-nowrap text-sm font-medium">
-                      <div className="flex space-x-2">
-                        <button 
-                          className="p-2 text-gray-500 hover:bg-gray-200 rounded-full transition-colors"
-                          title="Edit Student"
-                        >
-                          <Edit3 className="w-4 h-4" />
-                        </button>
-                        <button 
-                          className="p-2 text-red-500 hover:bg-red-100 rounded-full transition-colors"
-                          title="Delete Student"
-                        >
-                          <Trash2 className="w-4 h-4" />
-                        </button>
-                      </div>
-                    </td>
-                  </tr>
-                )) : (
+                      </td>
+                      <td className="px-4 py-4 whitespace-nowrap text-sm font-medium">
+                        <div className="flex space-x-1">
+                          <button 
+                            className="p-1.5 text-gray-500 hover:text-gray-700 hover:bg-gray-100 rounded-lg transition-colors"
+                            title="Edit Student"
+                          >
+                            <Edit3 className="w-4 h-4" />
+                          </button>
+                          <button 
+                            className="p-1.5 text-red-500 hover:text-red-700 hover:bg-red-50 rounded-lg transition-colors"
+                            title="Delete Student"
+                          >
+                            <Trash2 className="w-4 h-4" />
+                          </button>
+                        </div>
+                      </td>
+                    </tr>
+                  );
+                }) : (
                   <tr>
-                    <td colSpan="4" className="text-center py-10 text-gray-500">
-                      <Users className="w-12 h-12 text-gray-300 mx-auto mb-4" />
-                      <p>No students added yet.</p>
+                    <td colSpan="5" className="text-center py-12 text-gray-500">
+                      <Users className="w-12 h-12 text-gray-300 mx-auto mb-3" />
+                      <p className="font-medium text-gray-700">No students registered yet</p>
+                      <p className="text-xs text-gray-400 mt-1">Add a student using the form on the left with their ID card photo.</p>
                     </td>
                   </tr>
                 )}

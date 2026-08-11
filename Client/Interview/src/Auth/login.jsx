@@ -53,18 +53,23 @@ function StudentLogin() {
 
       const candidateData = {
         id: res.data.student.id,
+        name: res.data.student.name,
+        fullName: res.data.student.name,
         email: res.data.student.email,
         role: res.data.student.role,
         rollNo: res.data.student.rollNo,
         status: res.data.student.status,
+        faceDescriptor: res.data.student.faceDescriptor || [],
+        hasFaceRegistered: res.data.student.hasFaceRegistered,
+        idCardPhoto: res.data.student.idCardPhoto || '',
         token: res.data.token
       };
       localStorage.setItem("candidate", JSON.stringify(candidateData));
 
       handleCandidateLogin(candidateData);
-      navigate("/user-select");
+      navigate("/face", { state: { account: candidateData } });
     } catch (err) {
-      setError(err.response?.data?.message || "Login failed. Please check your credentials.");
+      setError(err.response?.data?.error || err.response?.data?.message || "Login failed. Please check your credentials.");
     } finally {
       setLoading(false);
     }

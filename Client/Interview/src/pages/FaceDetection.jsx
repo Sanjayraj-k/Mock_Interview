@@ -1,302 +1,406 @@
 import React, { useEffect, useRef, useState } from "react";
 import * as faceapi from "face-api.js";
-import AuthIdle from"../assets/images/auth-idle.svg";
-import AuthFace from "../assets/images/auth-face.svg";
 import { Navigate, useLocation, useNavigate } from "react-router-dom";
+import { ShieldCheck, ShieldAlert, Camera, CheckCircle2, AlertTriangle, RefreshCw, ArrowRight, UserCheck, Lock } from "lucide-react";
+import { motion, AnimatePresence } from "framer-motion";
 
 function FaceDetection() {
-  const [tempAccount, setTempAccount] = useState("");
-  const [localUserStream, setLocalUserStream] = useState(null);
-  const [modelsLoaded, setModelsLoaded] = useState(false);
-  const [faceApiLoaded, setFaceApiLoaded] = useState(false);
-  const [loginResult, setLoginResult] = useState("PENDING");
-  const [imageError, setImageError] = useState(false);
-  const [counter, setCounter] = useState(5);
-  const [labeledFaceDescriptors, setLabeledFaceDescriptors] = useState({});
-  const videoRef = useRef();
-  const canvasRef = useRef();
-  const faceApiIntervalRef = useRef();
-  const videoWidth = 640;
-  const videoHeight = 360;
-
   const location = useLocation();
   const navigate = useNavigate();
 
-  if (!location?.state) {
-    return <Navigate to="/" replace={true} />;
-  }
+  const [account, setAccount] = useState(null);
+  const [localUserStream, setLocalUserStream] = useState(null);
+  const [modelsLoaded, setModelsLoaded] = useState(false);
+  const [labeledFaceMatcher, setLabeledFaceMatcher] = useState(null);
+  const [loginResult, setLoginResult] = useState("IDLE"); // 'IDLE', 'SCANNING', 'MATCHED', 'MISMATCH'
+  const [matchScore, setMatchScore] = useState(0);
+  const [matchDistance, setMatchDistance] = useState(1.0);
+  const [counter, setCounter] = useState(3);
+  const [errorMessage, setErrorMessage] = useState("");
+  const [isCameraActive, setIsCameraActive] = useState(false);
 
-  const loadModels = async () => {
-    const uri = "/Face_AI_Models";
+  const videoRef = useRef(null);
+  const canvasRef = useRef(null);
+  const scanIntervalRef = useRef(null);
+  const counterIntervalRef = useRef(null);
 
-    await faceapi.nets.ssdMobilenetv1.loadFromUri(uri);
-    await faceapi.nets.faceLandmark68Net.loadFromUri(uri);
-    await faceapi.nets.faceRecognitionNet.loadFromUri(uri);
-  };
+  const videoWidth = 640;
+  const videoHeight = 480;
 
+  // Retrieve candidate account from state or localStorage
   useEffect(() => {
-    setTempAccount(location?.state?.account);
-  }, []);
-  useEffect(() => {
-    if (tempAccount) {
-      loadModels()
-        .then(async () => {
-          const labeledFaceDescriptors = await loadLabeledImages();
-          setLabeledFaceDescriptors(labeledFaceDescriptors);
-        })
-        .then(() => setModelsLoaded(true));
+    let candidate = location?.state?.account;
+    if (!candidate) {
+      const stored = localStorage.getItem("candidate");
+      if (stored) {
+        try {
+          candidate = JSON.parse(stored);
+        } catch (e) {
+          console.error(e);
+        }
+      }
     }
-  }, [tempAccount]);
 
-  useEffect(() => {
-    if (loginResult === "SUCCESS") {
-      const counterInterval = setInterval(() => {
-        setCounter((counter) => counter - 1);
-      }, 1000);
-
-      if (counter === 0) {
-        videoRef.current.pause();
-        videoRef.current.srcObject = null;
-        localUserStream.getTracks().forEach((track) => {
-          track.stop();
-        });
-        clearInterval(counterInterval);
-        clearInterval(faceApiIntervalRef.current);
-        localStorage.setItem(
-          "faceAuth",
-          JSON.stringify({ status: true, account: tempAccount })
-        );
-        navigate("/protected", { replace: true });
-      }
-
-      return () => clearInterval(counterInterval);
-    }
-    setCounter(5);
-  }, [loginResult, counter]);
-
-  const getLocalUserVideo = async () => {
-    navigator.mediaDevices
-      .getUserMedia({ audio: false, video: true })
-      .then((stream) => {
-        videoRef.current.srcObject = stream;
-        setLocalUserStream(stream);
-      })
-      .catch((err) => {
-        console.error("error:", err);
-      });
-  };
-
-  const scanFace = async () => {
-    faceapi.matchDimensions(canvasRef.current, videoRef.current);
-    const faceApiInterval = setInterval(async () => {
-      const detections = await faceapi
-        .detectAllFaces(videoRef.current)
-        .withFaceLandmarks()
-        .withFaceDescriptors();
-      const resizedDetections = faceapi.resizeResults(detections, {
-        width: videoWidth,
-        height: videoHeight,
-      });
-
-      const faceMatcher = new faceapi.FaceMatcher(labeledFaceDescriptors);
-
-      const results = resizedDetections.map((d) =>
-        faceMatcher.findBestMatch(d.descriptor)
-      );
-
-      if (!canvasRef.current) {
-        return;
-      }
-
-      canvasRef.current
-        .getContext("2d")
-        .clearRect(0, 0, videoWidth, videoHeight);
-      faceapi.draw.drawDetections(canvasRef.current, resizedDetections);
-      faceapi.draw.drawFaceLandmarks(canvasRef.current, resizedDetections);
-
-      if (results.length > 0 && tempAccount.id === results[0].label) {
-        setLoginResult("SUCCESS");
-      } else {
-        setLoginResult("FAILED");
-      }
-
-      if (!faceApiLoaded) {
-        setFaceApiLoaded(true);
-      }
-    }, 1000 / 15);
-    faceApiIntervalRef.current = faceApiInterval;
-  };
-
-  async function loadLabeledImages() {
-    if (!tempAccount) {
-      return null;
-    }
-    const descriptions = [];
-
-    let img;
-
-    try {
-      const imgPath =
-        tempAccount?.type === "CUSTOM"
-          ? tempAccount.picture
-          : // : import.meta.env.DEV
-            // ? `/temp-accounts/${tempAccount.picture}`
-            // : `/react-face-auth/temp-accounts/${tempAccount.picture}`;
-            `/temp-accounts/${tempAccount.picture}`;
-
-      img = await faceapi.fetchImage(imgPath);
-    } catch {
-      setImageError(true);
+    if (!candidate) {
+      navigate("/candidate/login", { replace: true });
       return;
     }
 
-    const detections = await faceapi
-      .detectSingleFace(img)
-      .withFaceLandmarks()
-      .withFaceDescriptor();
+    setAccount(candidate);
+  }, [location, navigate]);
 
-    if (detections) {
-      descriptions.push(detections.descriptor);
+  // Load Face-AI models
+  useEffect(() => {
+    const loadModels = async () => {
+      try {
+        const uri = "/Face_AI_Models";
+        await Promise.all([
+          faceapi.nets.ssdMobilenetv1.loadFromUri(uri),
+          faceapi.nets.faceLandmark68Net.loadFromUri(uri),
+          faceapi.nets.faceRecognitionNet.loadFromUri(uri)
+        ]);
+        setModelsLoaded(true);
+      } catch (err) {
+        console.error("Error loading face-api models:", err);
+        setErrorMessage("Failed to load Face-AI models. Please refresh the page.");
+      }
+    };
+    loadModels();
+  }, []);
+
+  // Initialize FaceMatcher with stored ID Card face descriptor
+  useEffect(() => {
+    if (!account || !modelsLoaded) return;
+
+    const setupFaceMatcher = async () => {
+      try {
+        let descriptor = null;
+
+        // 1. Direct Face Descriptor Array from Database (ID Card)
+        if (account.faceDescriptor && Array.isArray(account.faceDescriptor) && account.faceDescriptor.length === 128) {
+          descriptor = new Float32Array(account.faceDescriptor);
+        } 
+        // 2. Fallback: Extract from stored ID Card photo if descriptor not pre-calculated
+        else if (account.idCardPhoto || account.picture) {
+          const photoUrl = account.idCardPhoto || account.picture;
+          const img = await faceapi.fetchImage(photoUrl);
+          const detection = await faceapi
+            .detectSingleFace(img)
+            .withFaceLandmarks()
+            .withFaceDescriptor();
+
+          if (detection) {
+            descriptor = detection.descriptor;
+          }
+        }
+
+        if (descriptor) {
+          const studentId = account.rollNo || account.email || account.id || "registered_student";
+          const labeledDescriptor = new faceapi.LabeledFaceDescriptors(studentId, [descriptor]);
+          // Strict threshold: 0.55 for reliable identification
+          const matcher = new faceapi.FaceMatcher(labeledDescriptor, 0.55);
+          setLabeledFaceMatcher(matcher);
+        } else {
+          setErrorMessage("No biometric face embedding found for this student. Please contact faculty to register your ID card.");
+        }
+      } catch (err) {
+        console.error("Error creating FaceMatcher:", err);
+        setErrorMessage("Error initializing biometric matcher: " + err.message);
+      }
+    };
+
+    setupFaceMatcher();
+  }, [account, modelsLoaded]);
+
+  // Start webcam video feed
+  const startCamera = async () => {
+    try {
+      setErrorMessage("");
+      const stream = await navigator.mediaDevices.getUserMedia({
+        video: { width: videoWidth, height: videoHeight, facingMode: "user" },
+        audio: false
+      });
+      if (videoRef.current) {
+        videoRef.current.srcObject = stream;
+        setLocalUserStream(stream);
+        setIsCameraActive(true);
+      }
+    } catch (err) {
+      console.error("Camera access error:", err);
+      setErrorMessage("Could not access webcam. Please allow camera permissions in your browser.");
     }
+  };
 
-    return new faceapi.LabeledFaceDescriptors(tempAccount.id, descriptions);
-  }
+  // Stop camera helper
+  const stopCamera = () => {
+    if (localUserStream) {
+      localUserStream.getTracks().forEach(track => track.stop());
+      setLocalUserStream(null);
+    }
+    if (scanIntervalRef.current) {
+      clearInterval(scanIntervalRef.current);
+    }
+    if (counterIntervalRef.current) {
+      clearInterval(counterIntervalRef.current);
+    }
+    setIsCameraActive(false);
+  };
 
-  if (imageError) {
-    return (
-      <div className="min-h-screen flex flex-col items-center justify-center gap-[24px] max-w-[840px] mx-auto">
-        <h2 className="text-center text-3xl font-extrabold tracking-tight text-rose-700 sm:text-4xl">
-          <span className="block">
-            Upps! There is no profile picture associated with this account.
-          </span>
-        </h2>
-        <span className="block mt-4">
-          Please contact administration for registration or try again later.
-        </span>
-      </div>
-    );
-  }
+  // Cleanup on unmount
+  useEffect(() => {
+    return () => {
+      stopCamera();
+    };
+  }, []);
+
+  // Verification Success Countdown
+  useEffect(() => {
+    if (loginResult === "MATCHED") {
+      counterIntervalRef.current = setInterval(() => {
+        setCounter(prev => {
+          if (prev <= 1) {
+            clearInterval(counterIntervalRef.current);
+            stopCamera();
+            localStorage.setItem(
+              "faceAuth",
+              JSON.stringify({ status: true, account, verifiedAt: new Date().toISOString() })
+            );
+            navigate("/protected", { replace: true });
+            return 0;
+          }
+          return prev - 1;
+        });
+      }, 1000);
+
+      return () => clearInterval(counterIntervalRef.current);
+    } else {
+      setCounter(3);
+      if (counterIntervalRef.current) {
+        clearInterval(counterIntervalRef.current);
+      }
+    }
+  }, [loginResult, account, navigate]);
+
+  // Real-time Face Scanning & Verification Loop
+  const handleVideoPlay = () => {
+    if (!canvasRef.current || !videoRef.current) return;
+
+    faceapi.matchDimensions(canvasRef.current, { width: videoWidth, height: videoHeight });
+
+    scanIntervalRef.current = setInterval(async () => {
+      if (!videoRef.current || videoRef.current.paused || videoRef.current.ended) return;
+
+      try {
+        const detections = await faceapi
+          .detectAllFaces(videoRef.current)
+          .withFaceLandmarks()
+          .withFaceDescriptors();
+
+        const resizedDetections = faceapi.resizeResults(detections, {
+          width: videoWidth,
+          height: videoHeight
+        });
+
+        const ctx = canvasRef.current.getContext("2d");
+        ctx.clearRect(0, 0, videoWidth, videoHeight);
+
+        if (resizedDetections.length === 0) {
+          setLoginResult("SCANNING");
+          setMatchScore(0);
+          return;
+        }
+
+        // Draw bounding box and landmarks
+        faceapi.draw.drawDetections(canvasRef.current, resizedDetections);
+        faceapi.draw.drawFaceLandmarks(canvasRef.current, resizedDetections);
+
+        if (labeledFaceMatcher && resizedDetections.length > 0) {
+          const liveDescriptor = resizedDetections[0].descriptor;
+          const bestMatch = labeledFaceMatcher.findBestMatch(liveDescriptor);
+          
+          const distance = bestMatch.distance;
+          setMatchDistance(distance);
+
+          // Calculate similarity score percentage (0-100%)
+          const similarity = Math.max(0, Math.min(100, Math.round((1.0 - (distance / 1.0)) * 100)));
+          setMatchScore(similarity);
+
+          const studentId = account.rollNo || account.email || account.id || "registered_student";
+          if (bestMatch.label === studentId || distance < 0.55) {
+            setLoginResult("MATCHED");
+          } else {
+            setLoginResult("MISMATCH");
+          }
+        }
+      } catch (err) {
+        console.error("Frame processing error:", err);
+      }
+    }, 150);
+  };
 
   return (
-    <>
-    
-    <div className="h-full flex flex-col items-center justify-center gap-[24px] max-w-[720px] mx-auto">
-      {!localUserStream && !modelsLoaded && (
-        <h2 className="text-center text-3xl font-extrabold tracking-tight text-gray-900 sm:text-4xl">
-          <span className="block">
-            You're Attempting to Log In With Your Face.
-          </span>
-          <span className="block text-indigo-600 mt-2">Loading Models...</span>
-        </h2>
-      )}
-      {!localUserStream && modelsLoaded && (
-        <h2 className="text-center text-3xl font-extrabold tracking-tight text-gray-900 sm:text-4xl">
-          <span className="block text-indigo-600 mt-2">
-            Please Recognize Your Face to Completely verified.
-          </span>
-        </h2>
-      )}
-      {localUserStream && loginResult === "SUCCESS" && (
-        <h2 className="text-center text-3xl font-extrabold tracking-tight text-gray-900 sm:text-4xl">
-          <span className="block text-indigo-600 mt-2">
-            We've successfully recognize your face!
-          </span>
-          <span className="block text-indigo-600 mt-2">
-            Please stay {counter} more seconds...
-          </span>
-        </h2>
-      )}
-      {localUserStream && loginResult === "FAILED" && (
-        <h2 className="text-center text-3xl font-extrabold tracking-tight text-rose-700 sm:text-4xl">
-          <span className="block mt-[56px]">
-            Upps! We did not recognize your face.
-          </span>
-        </h2>
-      )}
-      {localUserStream && !faceApiLoaded && loginResult === "PENDING" && (
-        <h2 className="text-center text-3xl font-extrabold tracking-tight text-gray-900 sm:text-4xl">
-          <span className="block mt-[56px]">Scanning Face...</span>
-        </h2>
-      )}
-      <div className="w-full">
-        <div className="relative flex flex-col items-center p-[10px]">
+    <div className="min-h-screen w-full bg-gradient-to-br from-slate-900 via-indigo-950 to-slate-900 text-white flex flex-col justify-between p-6">
+      {/* Header */}
+      <header className="max-w-6xl w-full mx-auto flex items-center justify-between py-4 border-b border-indigo-900/50">
+        <div className="flex items-center gap-3">
+          <div className="w-10 h-10 rounded-xl bg-gradient-to-tr from-indigo-500 to-purple-500 flex items-center justify-center shadow-lg shadow-indigo-500/20">
+            <ShieldCheck className="w-6 h-6 text-white" />
+          </div>
+          <div>
+            <h1 className="text-lg font-bold tracking-tight">AI Biometric Proctoring</h1>
+            <p className="text-xs text-indigo-300">Identity Verification Engine</p>
+          </div>
+        </div>
+
+        {account && (
+          <div className="flex items-center gap-3 bg-white/5 border border-white/10 px-4 py-2 rounded-xl backdrop-blur-md">
+            {account.idCardPhoto ? (
+              <img src={account.idCardPhoto} alt={account.name} className="w-8 h-8 rounded-full object-cover border border-indigo-400" />
+            ) : (
+              <div className="w-8 h-8 rounded-full bg-indigo-600 flex items-center justify-center font-bold text-xs">
+                {account.name?.charAt(0) || 'S'}
+              </div>
+            )}
+            <div className="text-right">
+              <p className="text-xs font-semibold text-white">{account.name}</p>
+              <p className="text-[11px] text-indigo-300 font-mono">{account.rollNo}</p>
+            </div>
+          </div>
+        )}
+      </header>
+
+      {/* Main Content Area */}
+      <main className="max-w-4xl w-full mx-auto my-auto flex flex-col items-center py-6">
+        {/* Status Heading Banner */}
+        <div className="text-center mb-6">
+          <AnimatePresence mode="wait">
+            {!isCameraActive ? (
+              <motion.div key="idle" initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0 }}>
+                <h2 className="text-2xl sm:text-3xl font-extrabold text-white mb-2">
+                  Facial Biometric Verification
+                </h2>
+                <p className="text-sm text-indigo-200 max-w-md mx-auto">
+                  Position your face clearly in front of the camera to verify your identity against your registered student ID card.
+                </p>
+              </motion.div>
+            ) : loginResult === "MATCHED" ? (
+              <motion.div key="matched" initial={{ opacity: 0, scale: 0.9 }} animate={{ opacity: 1, scale: 1 }} exit={{ opacity: 0 }}>
+                <div className="inline-flex items-center gap-2 px-4 py-1.5 rounded-full bg-green-500/20 border border-green-500/30 text-green-400 text-sm font-semibold mb-2">
+                  <CheckCircle2 className="w-4 h-4" /> Identity Verified ({matchScore}% Match)
+                </div>
+                <h2 className="text-2xl sm:text-3xl font-bold text-white">
+                  Hold still for <span className="text-green-400 font-mono text-4xl font-black">{counter}</span> seconds...
+                </h2>
+              </motion.div>
+            ) : loginResult === "MISMATCH" ? (
+              <motion.div key="mismatch" initial={{ opacity: 0, scale: 0.9 }} animate={{ opacity: 1, scale: 1 }} exit={{ opacity: 0 }}>
+                <div className="inline-flex items-center gap-2 px-4 py-1.5 rounded-full bg-red-500/20 border border-red-500/30 text-red-400 text-sm font-semibold mb-2">
+                  <AlertTriangle className="w-4 h-4" /> Biometric Mismatch
+                </div>
+                <h2 className="text-2xl sm:text-3xl font-bold text-rose-300">
+                  Face does not match registered ID card
+                </h2>
+              </motion.div>
+            ) : (
+              <motion.div key="scanning" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}>
+                <div className="inline-flex items-center gap-2 px-4 py-1.5 rounded-full bg-indigo-500/20 border border-indigo-500/30 text-indigo-300 text-sm font-semibold mb-2">
+                  <RefreshCw className="w-4 h-4 animate-spin" /> Scanning Live Facial Features...
+                </div>
+                <h2 className="text-2xl sm:text-3xl font-bold text-white">
+                  Align your face inside the frame
+                </h2>
+              </motion.div>
+            )}
+          </AnimatePresence>
+        </div>
+
+        {/* Error Alert */}
+        {errorMessage && (
+          <div className="w-full max-w-lg mb-6 p-4 rounded-xl bg-red-500/10 border border-red-500/30 text-red-300 text-sm flex items-center gap-3">
+            <AlertTriangle className="w-5 h-5 shrink-0 text-red-400" />
+            <span>{errorMessage}</span>
+          </div>
+        )}
+
+        {/* Video / Camera Box */}
+        <div className="relative w-full max-w-[640px] aspect-[4/3] bg-slate-950/80 rounded-3xl overflow-hidden border-2 border-indigo-800/40 shadow-2xl shadow-indigo-950/50 flex items-center justify-center">
+          {/* Scanning Grid Overlay Effect */}
+          {isCameraActive && (
+            <div className="absolute inset-0 pointer-events-none z-10">
+              <div className="w-full h-full border-4 border-indigo-500/20 rounded-3xl" />
+              <div className={`w-full h-1 bg-gradient-to-r from-transparent ${loginResult === 'MATCHED' ? 'via-green-400' : loginResult === 'MISMATCH' ? 'via-rose-500' : 'via-cyan-400'} to-transparent animate-pulse`} style={{ animationDuration: '2s' }} />
+            </div>
+          )}
+
+          {/* Live Video Element */}
           <video
-            muted
-            autoPlay
             ref={videoRef}
-            height={videoHeight}
+            autoPlay
+            muted
+            playsInline
+            onPlay={handleVideoPlay}
             width={videoWidth}
-            onPlay={scanFace}
-            style={{
-              objectFit: "fill",
-              height: "360px",
-              borderRadius: "10px",
-              display: localUserStream ? "block" : "none",
-            }}
+            height={videoHeight}
+            className={`w-full h-full object-cover transform -scale-x-100 ${isCameraActive ? 'block' : 'hidden'}`}
           />
+
+          {/* Canvas for Landmark Overlay */}
           <canvas
             ref={canvasRef}
-            style={{
-              position: "absolute",
-              display: localUserStream ? "block" : "none",
-            }}
+            width={videoWidth}
+            height={videoHeight}
+            className={`absolute inset-0 w-full h-full object-cover transform -scale-x-100 z-10 ${isCameraActive ? 'block' : 'hidden'}`}
           />
+
+          {/* Camera Inactive Placeholder */}
+          {!isCameraActive && (
+            <div className="flex flex-col items-center p-8 text-center">
+              <div className="w-24 h-24 rounded-full bg-indigo-900/30 border border-indigo-700/50 flex items-center justify-center mb-6 shadow-inner">
+                <Camera className="w-12 h-12 text-indigo-400" />
+              </div>
+              <h3 className="text-xl font-bold text-white mb-2">Camera Ready for Verification</h3>
+              <p className="text-sm text-indigo-300 max-w-sm mb-6">
+                Ensure adequate room lighting and face the camera directly without sunglasses or heavy occlusion.
+              </p>
+              <button
+                onClick={startCamera}
+                disabled={!modelsLoaded || !labeledFaceMatcher}
+                className="px-8 py-3.5 rounded-2xl bg-gradient-to-r from-indigo-500 to-purple-600 hover:from-indigo-600 hover:to-purple-700 text-white font-bold text-sm shadow-lg shadow-indigo-500/30 transition-all transform hover:scale-105 active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
+              >
+                {!modelsLoaded ? (
+                  <>
+                    <RefreshCw className="w-4 h-4 animate-spin" />
+                    <span>Loading AI Models...</span>
+                  </>
+                ) : (
+                  <>
+                    <Camera className="w-4 h-4" />
+                    <span>Start Biometric Scan</span>
+                  </>
+                )}
+              </button>
+            </div>
+          )}
+
+          {/* Live Confidence Badge in corner */}
+          {isCameraActive && (
+            <div className="absolute bottom-4 left-4 z-20 bg-slate-900/80 backdrop-blur-md border border-white/10 px-3.5 py-1.5 rounded-xl flex items-center gap-2 text-xs font-mono">
+              <span className={`w-2.5 h-2.5 rounded-full ${loginResult === 'MATCHED' ? 'bg-green-500 animate-pulse' : loginResult === 'MISMATCH' ? 'bg-rose-500' : 'bg-yellow-500 animate-ping'}`} />
+              <span className="text-white font-bold">{matchScore}% Match Confidence</span>
+            </div>
+          )}
         </div>
-        {!localUserStream && (
-          <>
-            {modelsLoaded ? (
-              <>
-                <img
-                  alt="loading models"
-                  src={AuthFace}
-                  className="cursor-pointer my-8 mx-auto object-cover h-[272px]"
-                />
-                <button
-                  onClick={getLocalUserVideo}
-                  type="button"
-                  className="flex justify-center items-center w-full py-2.5 px-5 mr-2 text-sm font-medium text-white bg-indigo-600 hover:bg-indigo-700 rounded-lg border border-gray-200 inline-flex items-center"
-                >
-                  Scan my face
-                </button>
-              </>
-            ) : (
-              <>
-                <img
-                  alt="loading models"
-                  src={AuthIdle}
-                  className="cursor-pointer my-8 mx-auto object-cover h-[272px]"
-                />
-                <button
-                  disabled
-                  type="button"
-                  className="cursor-not-allowed flex justify-center items-center w-full py-2.5 px-5 text-sm font-medium text-gray-900 bg-white rounded-lg border border-gray-200 hover:bg-gray-100 hover:text-blue-700 inline-flex items-center"
-                >
-                  <svg
-                    aria-hidden="true"
-                    role="status"
-                    className="inline mr-2 w-4 h-4 text-gray-200 animate-spin"
-                    viewBox="0 0 100 101"
-                    fill="none"
-                    xmlns="http://www.w3.org/2000/svg"
-                  >
-                    <path
-                      d="M100 50.5908C100 78.2051 77.6142 100.591 50 100.591C22.3858 100.591 0 78.2051 0 50.5908C0 22.9766 22.3858 0.59082 50 0.59082C77.6142 0.59082 100 22.9766 100 50.5908ZM9.08144 50.5908C9.08144 73.1895 27.4013 91.5094 50 91.5094C72.5987 91.5094 90.9186 73.1895 90.9186 50.5908C90.9186 27.9921 72.5987 9.67226 50 9.67226C27.4013 9.67226 9.08144 27.9921 9.08144 50.5908Z"
-                      fill="currentColor"
-                    />
-                    <path
-                      d="M93.9676 39.0409C96.393 38.4038 97.8624 35.9116 97.0079 33.5539C95.2932 28.8227 92.871 24.3692 89.8167 20.348C85.8452 15.1192 80.8826 10.7238 75.2124 7.41289C69.5422 4.10194 63.2754 1.94025 56.7698 1.05124C51.7666 0.367541 46.6976 0.446843 41.7345 1.27873C39.2613 1.69328 37.813 4.19778 38.4501 6.62326C39.0873 9.04874 41.5694 10.4717 44.0505 10.1071C47.8511 9.54855 51.7191 9.52689 55.5402 10.0491C60.8642 10.7766 65.9928 12.5457 70.6331 15.2552C75.2735 17.9648 79.3347 21.5619 82.5849 25.841C84.9175 28.9121 86.7997 32.2913 88.1811 35.8758C89.083 38.2158 91.5421 39.6781 93.9676 39.0409Z"
-                      fill="#1C64F2"
-                    />
-                  </svg>
-                  Please wait while models were loading...
-                </button>
-              </>
-            )}
-          </>
-        )}
-      </div>
+      </main>
+
+      {/* Footer Info */}
+      <footer className="max-w-4xl w-full mx-auto flex items-center justify-between text-xs text-indigo-400/80 pt-4 border-t border-indigo-950">
+        <div className="flex items-center gap-2">
+          <Lock className="w-3.5 h-3.5" />
+          <span>Encrypted 128-D Euclidean Vector Comparison</span>
+        </div>
+        <span>AI Mock Interview Proctoring System</span>
+      </footer>
     </div>
-    </>
   );
 }
 

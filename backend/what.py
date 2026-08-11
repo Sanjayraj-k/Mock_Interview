@@ -11,7 +11,6 @@ from pyngrok import ngrok  # Add this import
 load_dotenv()
 
 app = Flask(__name__)
-
 # Env vars
 PHONENUMBERID = os.getenv('PHONENUMBERID')
 ACCESS_TOKEN = os.getenv('ACCESS_TOKEN')

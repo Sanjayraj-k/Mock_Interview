@@ -1,9 +1,10 @@
 // src/Dashboard/Hr.jsx
 
-import React, { useState, useEffect, useContext } from 'react';
-import { User, Plus, Calendar, Settings, Eye, Trash2, Edit3, Users, X, Award, Clock, Mail, User as UserIcon } from 'lucide-react';
+import React, { useState, useEffect, useContext, useRef } from 'react';
+import { User, Plus, Calendar, Settings, Eye, Trash2, Edit3, Users, X, Award, Clock, Mail, User as UserIcon, ShieldCheck, AlertTriangle, Camera, CheckCircle2, Image as ImageIcon, RefreshCw } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
-import { AuthContext } from '../context/AuthContext'; // Ensure this path is correct
+import { AuthContext } from '../context/AuthContext';
+import * as faceapi from 'face-api.js';
 
 // ================================================================================================
 // Main HR Dashboard Component
@@ -23,12 +24,22 @@ export default function HRDashboard() {
   const [roles, setRoles] = useState([]);
   const [students, setStudents] = useState([]);
   
+  // Biometric / Face Embedding States
+  const [modelsLoaded, setModelsLoaded] = useState(false);
+  const [isExtractingFace, setIsExtractingFace] = useState(false);
+  const [faceExtractionStatus, setFaceExtractionStatus] = useState(null); // 'SUCCESS', 'FAILED', null
+  const [idCardPreview, setIdCardPreview] = useState(null);
+  const [croppedFacePreview, setCroppedFacePreview] = useState(null);
+  const [successMsg, setSuccessMsg] = useState('');
+
   // State for managing form inputs
   const [newRole, setNewRole] = useState({
     title: '', description: '', date: '', duration: '60', maxStudents: '20', seatsAvailable: '20', package: ''
   });
   const [newStudent, setNewStudent] = useState({
-    name: '', email: '', rollNo: '', role: '', password: ''
+    name: '', email: '', rollNo: '', role: '', password: '',
+    faceDescriptor: [],
+    idCardPhoto: ''
   });
 
   // State for handling errors
@@ -39,6 +50,24 @@ export default function HRDashboard() {
   // Get authentication state and functions from the context
   const { isHRAuthenticated, hrData, handleHRLogout } = useContext(AuthContext);
   const navigate = useNavigate();
+
+  // Load face-api.js AI models once on component mount
+  useEffect(() => {
+    const loadModels = async () => {
+      try {
+        const uri = '/Face_AI_Models';
+        await Promise.all([
+          faceapi.nets.ssdMobilenetv1.loadFromUri(uri),
+          faceapi.nets.faceLandmark68Net.loadFromUri(uri),
+          faceapi.nets.faceRecognitionNet.loadFromUri(uri)
+        ]);
+        setModelsLoaded(true);
+      } catch (err) {
+        console.error('Failed to load Face-AI models:', err);
+      }
+    };
+    loadModels();
+  }, []);
 
   // Effect to fetch data specific to the logged-in HR user
   useEffect(() => {
@@ -99,6 +128,75 @@ export default function HRDashboard() {
     }
   };
 
+  // Handle ID Card file upload and face embedding extraction
+  const handleIdCardUpload = async (e) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    if (!modelsLoaded) {
+      setError('AI Face Detection models are still initializing. Please wait a few seconds.');
+      return;
+    }
+
+    setIsExtractingFace(true);
+    setFaceExtractionStatus(null);
+    setError('');
+
+    const reader = new FileReader();
+    reader.onload = async () => {
+      const base64Data = reader.result;
+      setIdCardPreview(base64Data);
+
+      try {
+        const img = await faceapi.fetchImage(base64Data);
+        const detection = await faceapi
+          .detectSingleFace(img)
+          .withFaceLandmarks()
+          .withFaceDescriptor();
+
+        if (!detection) {
+          setFaceExtractionStatus('FAILED');
+          setCroppedFacePreview(null);
+          setNewStudent(prev => ({ ...prev, faceDescriptor: [], idCardPhoto: '' }));
+          setError('No clear face detected on the ID card. Please upload a clear photo or ID card image.');
+        } else {
+          const descriptorArray = Array.from(detection.descriptor);
+          
+          // Crop detected face to make a thumbnail preview
+          const box = detection.detection.box;
+          const canvas = document.createElement('canvas');
+          const padding = Math.min(box.width, box.height) * 0.2;
+          const cropX = Math.max(0, box.x - padding);
+          const cropY = Math.max(0, box.y - padding);
+          const cropW = Math.min(img.width - cropX, box.width + padding * 2);
+          const cropH = Math.min(img.height - cropY, box.height + padding * 2);
+
+          canvas.width = cropW;
+          canvas.height = cropH;
+          const ctx = canvas.getContext('2d');
+          ctx.drawImage(img, cropX, cropY, cropW, cropH, 0, 0, cropW, cropH);
+          const croppedFaceUrl = canvas.toDataURL('image/jpeg', 0.85);
+
+          setCroppedFacePreview(croppedFaceUrl);
+          setFaceExtractionStatus('SUCCESS');
+          setNewStudent(prev => ({
+            ...prev,
+            faceDescriptor: descriptorArray,
+            idCardPhoto: croppedFaceUrl
+          }));
+          setSuccessMsg('Face detected & 128-D biometric embedding vector extracted successfully!');
+        }
+      } catch (err) {
+        console.error('Error processing ID card face:', err);
+        setFaceExtractionStatus('FAILED');
+        setError('Error extracting face embedding: ' + err.message);
+      } finally {
+        setIsExtractingFace(false);
+      }
+    };
+    reader.readAsDataURL(file);
+  };
+
   // Handler to add a new student
   const handleAddStudent = async (e) => {
     e.preventDefault();
@@ -108,10 +206,16 @@ export default function HRDashboard() {
     }
     try {
       setError('');
+      setSuccessMsg('');
       const response = await fetch('http://localhost:5000/api/students', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ ...newStudent, hrEmail: hrData.email }) // Add hrEmail to the payload
+        body: JSON.stringify({
+          ...newStudent,
+          hrEmail: hrData.email,
+          faceDescriptor: newStudent.faceDescriptor,
+          idCardPhoto: newStudent.idCardPhoto
+        })
       });
       if (!response.ok) {
         const errData = await response.json();
@@ -119,7 +223,13 @@ export default function HRDashboard() {
       }
       const createdStudent = await response.json();
       setStudents([...students, createdStudent]);
-      setNewStudent({ name: '', email: '', rollNo: '', role: '', password: '' });
+      setSuccessMsg(`Student "${newStudent.name}" added successfully with ${newStudent.faceDescriptor.length > 0 ? 'biometric face embedding' : 'standard profile'}!`);
+      
+      // Reset form
+      setNewStudent({ name: '', email: '', rollNo: '', role: '', password: '', faceDescriptor: [], idCardPhoto: '' });
+      setIdCardPreview(null);
+      setCroppedFacePreview(null);
+      setFaceExtractionStatus(null);
     } catch (err) {
       setError(err.message);
     }
@@ -230,6 +340,12 @@ export default function HRDashboard() {
               <span className="block sm:inline">{error}</span>
             </div>
           )}
+          {successMsg && (
+            <div className="bg-green-100 border border-green-400 text-green-700 px-4 py-3 rounded-lg relative mb-6" role="alert">
+              <CheckCircle2 className="inline w-5 h-5 mr-2" />
+              <span className="block sm:inline">{successMsg}</span>
+            </div>
+          )}
           {activeTab === 'dashboard' && <DashboardContent roles={roles} students={students} />}
           {activeTab === 'roles' && (
             <RolesContent 
@@ -242,7 +358,7 @@ export default function HRDashboard() {
               handleViewResults={handleViewResults}
             />
           )}
-          {activeTab === 'students' && <StudentsContent students={students} roles={roles} newStudent={newStudent} setNewStudent={setNewStudent} handleAddStudent={handleAddStudent} />}
+          {activeTab === 'students' && <StudentsContent students={students} roles={roles} newStudent={newStudent} setNewStudent={setNewStudent} handleAddStudent={handleAddStudent} handleIdCardUpload={handleIdCardUpload} modelsLoaded={modelsLoaded} isExtractingFace={isExtractingFace} faceExtractionStatus={faceExtractionStatus} idCardPreview={idCardPreview} croppedFacePreview={croppedFacePreview} />}
         </main>
       </div>
 
@@ -633,7 +749,7 @@ const RolesContent = ({ roles, showCreateRole, setShowCreateRole, newRole, setNe
     </div>
 );
   
-const StudentsContent = ({ students, roles, newStudent, setNewStudent, handleAddStudent }) => (
+const StudentsContent = ({ students, roles, newStudent, setNewStudent, handleAddStudent, handleIdCardUpload, modelsLoaded, isExtractingFace, faceExtractionStatus, idCardPreview, croppedFacePreview }) => (
       <div>
           <h2 className="text-2xl font-bold text-gray-900 mb-6">Student Management</h2>
           <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
@@ -643,28 +759,81 @@ const StudentsContent = ({ students, roles, newStudent, setNewStudent, handleAdd
                       <form onSubmit={handleAddStudent} className="space-y-4">
                           <div>
                               <label className="block text-sm font-medium text-gray-700 mb-1">Student Name</label>
-                              <input type="text" placeholder="Full Name" value={newStudent.name} onChange={(e) => setNewStudent({ ...newStudent, name: e.target.value })} className="w-full px-3 py-2 border border-gray-300 rounded-md" required />
+                              <input type="text" placeholder="Full Name" value={newStudent.name} onChange={(e) => setNewStudent({ ...newStudent, name: e.target.value })} className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500" required />
                           </div>
                           <div>
                               <label className="block text-sm font-medium text-gray-700 mb-1">Email Address</label>
-                              <input type="email" placeholder="student@example.com" value={newStudent.email} onChange={(e) => setNewStudent({ ...newStudent, email: e.target.value })} className="w-full px-3 py-2 border border-gray-300 rounded-md" required />
+                              <input type="email" placeholder="student@example.com" value={newStudent.email} onChange={(e) => setNewStudent({ ...newStudent, email: e.target.value })} className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500" required />
                           </div>
                           <div>
                               <label className="block text-sm font-medium text-gray-700 mb-1">Roll Number</label>
-                              <input type="text" placeholder="e.g., 20BCE1234" value={newStudent.rollNo} onChange={(e) => setNewStudent({ ...newStudent, rollNo: e.target.value })} className="w-full px-3 py-2 border border-gray-300 rounded-md" required />
+                              <input type="text" placeholder="e.g., 20BCE1234" value={newStudent.rollNo} onChange={(e) => setNewStudent({ ...newStudent, rollNo: e.target.value })} className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500" required />
                           </div>
                           <div>
                               <label className="block text-sm font-medium text-gray-700 mb-1">Assign to Role</label>
-                              <select value={newStudent.role} onChange={(e) => setNewStudent({ ...newStudent, role: e.target.value })} className="w-full px-3 py-2 border border-gray-300 rounded-md" required>
+                              <select value={newStudent.role} onChange={(e) => setNewStudent({ ...newStudent, role: e.target.value })} className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500" required>
                                   <option value="">Select a Role</option>
                                   {roles.map(role => <option key={role._id} value={role.title}>{role.title}</option>)}
                               </select>
                           </div>
                           <div>
                               <label className="block text-sm font-medium text-gray-700 mb-1">Set Password</label>
-                              <input type="password" placeholder="Create a strong password" value={newStudent.password} onChange={(e) => setNewStudent({ ...newStudent, password: e.target.value })} className="w-full px-3 py-2 border border-gray-300 rounded-md" required />
+                              <input type="password" placeholder="Create a strong password" value={newStudent.password} onChange={(e) => setNewStudent({ ...newStudent, password: e.target.value })} className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500" required />
                           </div>
-                          <button type="submit" className="w-full bg-gradient-to-r from-blue-500 to-purple-600 text-white py-2.5 rounded-lg font-medium hover:from-blue-600 hover:to-purple-700">Add Student</button>
+
+                          {/* ===== ID Card Photo Upload & Biometric Extraction ===== */}
+                          <div className="border-t pt-4 mt-4">
+                            <label className="block text-sm font-medium text-gray-700 mb-2">
+                              <Camera className="inline w-4 h-4 mr-1.5 text-blue-600" />
+                              Student ID Card / Photo (Face Biometric)
+                            </label>
+                            <div className="border-2 border-dashed border-gray-300 rounded-lg p-4 text-center hover:border-blue-400 transition-colors">
+                              <input
+                                type="file"
+                                accept="image/*"
+                                onChange={handleIdCardUpload}
+                                className="hidden"
+                                id="hr-id-card-upload"
+                              />
+                              <label htmlFor="hr-id-card-upload" className="cursor-pointer">
+                                {isExtractingFace ? (
+                                  <div className="flex flex-col items-center">
+                                    <RefreshCw className="w-8 h-8 text-blue-500 animate-spin mb-2" />
+                                    <span className="text-sm text-blue-600 font-medium">Detecting face & extracting embedding...</span>
+                                  </div>
+                                ) : idCardPreview ? (
+                                  <div className="flex flex-col items-center space-y-2">
+                                    <div className="flex items-center space-x-3">
+                                      {croppedFacePreview && (
+                                        <img src={croppedFacePreview} alt="Cropped Face" className="w-16 h-16 rounded-full object-cover border-2 border-green-400 shadow-md" />
+                                      )}
+                                      <img src={idCardPreview} alt="ID Card" className="max-h-20 rounded-md border shadow-sm" />
+                                    </div>
+                                    {faceExtractionStatus === 'SUCCESS' && (
+                                      <span className="text-xs font-semibold text-green-600 flex items-center">
+                                        <ShieldCheck className="w-4 h-4 mr-1" /> Face Embedding Extracted (128-D) ✅
+                                      </span>
+                                    )}
+                                    {faceExtractionStatus === 'FAILED' && (
+                                      <span className="text-xs font-semibold text-red-600 flex items-center">
+                                        <AlertTriangle className="w-4 h-4 mr-1" /> No face found. Try another image.
+                                      </span>
+                                    )}
+                                    <span className="text-xs text-gray-400">Click to upload a different image</span>
+                                  </div>
+                                ) : (
+                                  <div className="flex flex-col items-center">
+                                    <ImageIcon className="w-8 h-8 text-gray-400 mb-2" />
+                                    <span className="text-sm text-gray-500">Click to upload student ID card or photo</span>
+                                    <span className="text-xs text-gray-400 mt-1">Face will be auto-detected & embedding extracted</span>
+                                    {!modelsLoaded && <span className="text-xs text-amber-500 mt-1">⏳ AI models loading...</span>}
+                                  </div>
+                                )}
+                              </label>
+                            </div>
+                          </div>
+
+                          <button type="submit" className="w-full bg-gradient-to-r from-blue-500 to-purple-600 text-white py-2.5 rounded-lg font-medium hover:from-blue-600 hover:to-purple-700 transition-all duration-200 shadow-md">Add Student</button>
                       </form>
                   </div>
               </div>
@@ -676,6 +845,7 @@ const StudentsContent = ({ students, roles, newStudent, setNewStudent, handleAdd
                                   <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Name</th>
                                   <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Roll No</th>
                                   <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Assigned Role</th>
+                                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">ID Biometrics</th>
                                   <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Actions</th>
                               </tr>
                           </thead>
@@ -683,12 +853,34 @@ const StudentsContent = ({ students, roles, newStudent, setNewStudent, handleAdd
                               {students.length > 0 ? students.map(student => (
                                   <tr key={student._id}>
                                       <td className="px-6 py-4 whitespace-nowrap">
-                                          <div className="font-medium text-gray-900">{student.name}</div>
-                                          <div className="text-sm text-gray-500">{student.email}</div>
+                                          <div className="flex items-center">
+                                            {student.idCardPhoto ? (
+                                              <img src={student.idCardPhoto} alt="Face" className="w-10 h-10 rounded-full object-cover border-2 border-green-400 mr-3 shadow-sm" />
+                                            ) : (
+                                              <div className="w-10 h-10 rounded-full bg-gray-200 flex items-center justify-center mr-3">
+                                                <User className="w-5 h-5 text-gray-400" />
+                                              </div>
+                                            )}
+                                            <div>
+                                              <div className="font-medium text-gray-900">{student.name}</div>
+                                              <div className="text-sm text-gray-500">{student.email}</div>
+                                            </div>
+                                          </div>
                                       </td>
                                       <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">{student.rollNo}</td>
                                       <td className="px-6 py-4 whitespace-nowrap">
                                           <span className="px-2 inline-flex text-xs leading-5 font-semibold rounded-full bg-green-100 text-green-800">{student.role}</span>
+                                      </td>
+                                      <td className="px-6 py-4 whitespace-nowrap">
+                                          {student.hasFaceRegistered ? (
+                                            <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-emerald-100 text-emerald-800">
+                                              <ShieldCheck className="w-3.5 h-3.5 mr-1" /> Verified (128-D) 🛡️
+                                            </span>
+                                          ) : (
+                                            <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-amber-100 text-amber-800">
+                                              <AlertTriangle className="w-3.5 h-3.5 mr-1" /> No ID Photo ⚠️
+                                            </span>
+                                          )}
                                       </td>
                                       <td className="px-6 py-4 whitespace-nowrap text-sm font-medium">
                                           <div className="flex space-x-2">
@@ -699,7 +891,7 @@ const StudentsContent = ({ students, roles, newStudent, setNewStudent, handleAdd
                                   </tr>
                               )) : (
                                   <tr>
-                                      <td colSpan="4" className="text-center py-10 text-gray-500">
+                                      <td colSpan="5" className="text-center py-10 text-gray-500">
                                           No students added yet.
                                       </td>
                                   </tr>

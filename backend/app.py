@@ -6,6 +6,7 @@ from datetime import datetime
 import bcrypt
 import re
 from pytz import timezone
+import numpy as np
 import json
 
 app = Flask(__name__)
@@ -120,7 +121,7 @@ def login():
 # --- Candidate Login Endpoint ---
 @app.route('/api/candidate/login', methods=['POST'])
 def candidate_login():
-    """Logs in a candidate (student) user."""
+    """Logs in a candidate (student) user and returns stored biometric face embeddings."""
     try:
         data = request.get_json()
         email = data.get("email")
@@ -135,13 +136,18 @@ def candidate_login():
             return jsonify({"error": "Invalid credentials"}), 401
 
         # Prepare response (exclude password)
+        face_desc = student.get("faceDescriptor", [])
         student_response = {
             "id": str(student["_id"]),
-            "name": student["name"],
-            "email": student["email"],
-            "role": student["role"],
-            "rollNo": student["rollNo"],
-            "status": student["status"]
+            "name": student.get("name", ""),
+            "email": student.get("email", ""),
+            "role": student.get("role", ""),
+            "rollNo": student.get("rollNo", ""),
+            "status": student.get("status", "Eligible"),
+            "assignedRounds": student.get("assignedRounds", ["coding"]),
+            "faceDescriptor": face_desc,
+            "hasFaceRegistered": bool(isinstance(face_desc, list) and len(face_desc) > 0),
+            "idCardPhoto": student.get("idCardPhoto", "")
         }
         # Simulate a token (replace with JWT in production)
         token = "dummy-token"
@@ -214,17 +220,22 @@ def create_role():
 
 @app.route('/api/students', methods=['GET'])
 def get_students():
-    """Gets all students added by a specific HR user."""
-    hr_email = request.args.get('hrEmail')
-    if not hr_email:
-        return jsonify({"error": "hrEmail query parameter is required"}), 400
+    """Gets all students added by a specific HR user or Teacher."""
+    teacher_email = request.args.get('hrEmail') or request.args.get('teacherEmail')
+    if not teacher_email:
+        return jsonify({"error": "hrEmail or teacherEmail query parameter is required"}), 400
         
     try:
         # Find students, excluding the sensitive password field from the result
-        students_cursor = db.students.find({"hrEmail": hr_email}, {'password': 0})
+        students_cursor = db.students.find(
+            {"$or": [{"hrEmail": teacher_email}, {"teacherEmail": teacher_email}]},
+            {'password': 0}
+        )
         students_list = []
         for student in students_cursor:
             student['_id'] = str(student['_id'])
+            face_desc = student.get('faceDescriptor', [])
+            student['hasFaceRegistered'] = bool(isinstance(face_desc, list) and len(face_desc) > 0)
             students_list.append(student)
         return jsonify(students_list), 200
     except Exception as e:
@@ -233,13 +244,13 @@ def get_students():
 
 @app.route('/api/students', methods=['POST'])
 def create_student():
-    """Creates a new student and associates them with the logged-in HR user."""
+    """Creates a new student with optional ID card biometric face embedding."""
     try:
         data = request.get_json()
-        hr_email = data.get("hrEmail")
+        teacher_email = data.get("hrEmail") or data.get("teacherEmail")
 
-        if not hr_email:
-            return jsonify({"error": "hrEmail is required to add a student"}), 400
+        if not teacher_email:
+            return jsonify({"error": "hrEmail or teacherEmail is required to add a student"}), 400
         
         required_fields = ["name", "email", "rollNo", "role", "password"]
         if not all(field in data for field in required_fields):
@@ -250,13 +261,29 @@ def create_student():
 
         hashed_password = bcrypt.hashpw(data.get("password").encode('utf-8'), bcrypt.gensalt()).decode('utf-8')
 
+        face_descriptor = data.get("faceDescriptor", [])
+        if isinstance(face_descriptor, list):
+            try:
+                face_descriptor = [float(x) for x in face_descriptor]
+            except Exception:
+                face_descriptor = []
+
+        assigned_rounds = data.get("assignedRounds", ["coding"])
+        if isinstance(assigned_rounds, str):
+            assigned_rounds = [assigned_rounds]
+
         student = {
-            "hrEmail": hr_email,
+            "hrEmail": teacher_email,
+            "teacherEmail": teacher_email,
             "name": data.get("name"),
             "email": data.get("email"),
             "rollNo": data.get("rollNo"),
             "role": data.get("role"),
             "password": hashed_password,
+            "assignedRounds": assigned_rounds,
+            "faceDescriptor": face_descriptor,
+            "idCardPhoto": data.get("idCardPhoto", ""),
+            "hasFaceRegistered": bool(len(face_descriptor) > 0),
             "status": "Eligible",
             "createdAt": datetime.utcnow()
         }
@@ -267,6 +294,78 @@ def create_student():
     except Exception as e:
         app.logger.error(f"Create student error: {e}")
         return jsonify({"error": "An internal server error occurred"}), 500
+
+@app.route('/api/students/<student_id>/face-descriptor', methods=['POST'])
+def update_student_face_descriptor(student_id):
+    """Updates the biometric face embedding descriptor for an existing student."""
+    try:
+        data = request.get_json()
+        face_descriptor = data.get("faceDescriptor", [])
+        id_card_photo = data.get("idCardPhoto", "")
+
+        if not face_descriptor or not isinstance(face_descriptor, list):
+            return jsonify({"error": "Valid faceDescriptor array is required"}), 400
+
+        face_descriptor = [float(x) for x in face_descriptor]
+
+        update_fields = {
+            "faceDescriptor": face_descriptor,
+            "hasFaceRegistered": True,
+            "updatedAt": datetime.utcnow()
+        }
+        if id_card_photo:
+            update_fields["idCardPhoto"] = id_card_photo
+
+        result = db.students.update_one(
+            {"_id": ObjectId(student_id)},
+            {"$set": update_fields}
+        )
+
+        if result.matched_count == 0:
+            return jsonify({"error": "Student not found"}), 404
+
+        return jsonify({"message": "Face embedding updated successfully", "hasFaceRegistered": True}), 200
+    except Exception as e:
+        app.logger.error(f"Update face descriptor error: {e}")
+        return jsonify({"error": str(e)}), 500
+
+@app.route('/api/verify-face', methods=['POST'])
+def verify_face_embeddings():
+    """Compares two face embedding vectors (stored vs live) using Euclidean distance and Cosine similarity."""
+    try:
+        data = request.get_json()
+        ref_descriptor = data.get("referenceDescriptor")
+        live_descriptor = data.get("liveDescriptor")
+        threshold = float(data.get("threshold", 0.55))
+
+        if not ref_descriptor or not live_descriptor:
+            return jsonify({"error": "Both referenceDescriptor and liveDescriptor are required"}), 400
+
+        ref_vec = np.array(ref_descriptor, dtype=np.float32)
+        live_vec = np.array(live_descriptor, dtype=np.float32)
+
+        # Euclidean distance
+        euclidean_distance = float(np.linalg.norm(ref_vec - live_vec))
+        
+        # Cosine similarity
+        dot_product = float(np.dot(ref_vec, live_vec))
+        norm_ref = float(np.linalg.norm(ref_vec))
+        norm_live = float(np.linalg.norm(live_vec))
+        cosine_similarity = float(dot_product / (norm_ref * norm_live)) if (norm_ref > 0 and norm_live > 0) else 0.0
+
+        is_match = euclidean_distance < threshold
+        confidence = max(0.0, min(100.0, (1.0 - (euclidean_distance / 1.0)) * 100))
+
+        return jsonify({
+            "isMatch": is_match,
+            "euclideanDistance": euclidean_distance,
+            "cosineSimilarity": cosine_similarity,
+            "threshold": threshold,
+            "confidence": confidence
+        }), 200
+    except Exception as e:
+        app.logger.error(f"Verify face error: {e}")
+        return jsonify({"error": str(e)}), 500
     
 @app.route('/api/get-random-questions', methods=['GET'])
 def get_random_questions():
