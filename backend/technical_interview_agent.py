@@ -41,7 +41,11 @@ from flask import Flask, request, jsonify, session
 from flask_cors import CORS
 
 # LangChain / LangGraph
-from langchain_groq import ChatGroq
+try:
+    from langchain_groq import ChatGroq
+except Exception as import_err:
+    ChatGroq = None
+    logging.warning(f"Could not import ChatGroq in technical_interview_agent.py: {import_err}")
 from langchain_core.messages import HumanMessage, SystemMessage, AIMessage
 from langgraph.graph import StateGraph, END
 from langgraph.graph.message import add_messages
@@ -81,43 +85,48 @@ CORS(app, supports_credentials=True, origins=["http://localhost:5173", "http://l
 GROQ_API_KEY = os.getenv("GROQ_API_KEY")
 if not GROQ_API_KEY:
     logger.error("GROQ_API_KEY not found in .env")
-    raise ValueError("GROQ_API_KEY missing from .env")
 
 # ─────────────────────────────────────────────
 # LLM Initialization
 # ─────────────────────────────────────────────
-# Separate LLM instances to allow different configs per agent
-llm_extractor = ChatGroq(
-    model_name="llama-3.3-70b-versatile",
-    groq_api_key=GROQ_API_KEY,
-    temperature=0.2,
-    max_tokens=1500,
-)
+llm_extractor = None
+llm_questioner = None
+llm_evaluator = None
 
-llm_questioner = ChatGroq(
-    model_name="llama-3.3-70b-versatile",
-    groq_api_key=GROQ_API_KEY,
-    temperature=0.7,
-    max_tokens=400,
-)
-
-llm_evaluator = ChatGroq(
-    model_name="llama-3.3-70b-versatile",
-    groq_api_key=GROQ_API_KEY,
-    temperature=0.1,
-    max_tokens=600,
-)
-
-logger.info("All LLM instances initialized successfully.")
+if ChatGroq and GROQ_API_KEY:
+    try:
+        llm_extractor = ChatGroq(
+            model_name="llama-3.3-70b-versatile",
+            groq_api_key=GROQ_API_KEY,
+            temperature=0.2,
+            max_tokens=1500,
+        )
+        llm_questioner = ChatGroq(
+            model_name="llama-3.3-70b-versatile",
+            groq_api_key=GROQ_API_KEY,
+            temperature=0.7,
+            max_tokens=400,
+        )
+        llm_evaluator = ChatGroq(
+            model_name="llama-3.3-70b-versatile",
+            groq_api_key=GROQ_API_KEY,
+            temperature=0.1,
+            max_tokens=600,
+        )
+        logger.info("All LLM instances initialized successfully.")
+    except Exception as e:
+        logger.warning(f"Failed to instantiate ChatGroq LLMs: {e}")
 
 # ─────────────────────────────────────────────
 # Session Store (in-memory)
 # ─────────────────────────────────────────────
 session_store: Dict[str, Dict[str, Any]] = {}
 
-MAX_QUESTIONS = 5          # Total questions per interview
+MAX_QUESTIONS = 5          # Total main questions per interview
 MARKS_PER_QUESTION = 10    # Max marks per question → total = 50
-FOLLOWUP_THRESHOLD = 5     # Score below this triggers a follow-up question
+MAX_FOLLOWUPS_PER_QUESTION = 1  # One follow-up per main question (always asked)
+CORRECT_THRESHOLD = 7      # Score >= this means answer is correct → ask depth follow-up
+WRONG_THRESHOLD = 6        # Score < this means answer needs clarification → ask probing follow-up
 
 
 # ═══════════════════════════════════════════════════════════════
@@ -140,6 +149,10 @@ class InterviewState(TypedDict):
     scores: List[int]             # Score per main question (0-10)
     question_feedbacks: List[str] # Detailed feedback per question
     total_marks: int
+    last_score: Optional[int]
+    last_is_correct: Optional[bool]
+    last_feedback: Optional[str]
+    last_hint: Optional[str]
 
     # Control
     phase: str                    # "start"|"asking"|"evaluating"|"followup"|"complete"
@@ -210,6 +223,9 @@ def resume_extractor_agent(state: InterviewState) -> InterviewState:
         return state
     
     try:
+        if not llm_extractor:
+            raise ValueError("LLM Extractor instance unavailable.")
+
         messages = [
             SystemMessage(content=RESUME_EXTRACTION_SYSTEM_PROMPT),
             HumanMessage(content=f"Extract technical information from this resume:\n\n{state['resume_text']}")
@@ -222,11 +238,9 @@ def resume_extractor_agent(state: InterviewState) -> InterviewState:
         json_match = re.search(r'\{.*\}', raw_content, re.DOTALL)
         if json_match:
             json_str = json_match.group(0)
-            # Validate it's proper JSON
             parsed = json.loads(json_str)
             state["resume_summary"] = json.dumps(parsed, indent=2)
         else:
-            # Fallback: store raw content
             state["resume_summary"] = raw_content
         
         logger.info(f"[ResumeExtractor] Extraction successful. Summary length: {len(state['resume_summary'])}")
@@ -234,16 +248,17 @@ def resume_extractor_agent(state: InterviewState) -> InterviewState:
         state["next_action"] = "generate_question"
         state["error"] = None
         
-    except json.JSONDecodeError as e:
-        logger.warning(f"[ResumeExtractor] JSON parse error: {e}. Using raw content.")
-        state["resume_summary"] = raw_content
+    except Exception as e:
+        logger.warning(f"[ResumeExtractor] Extraction LLM failed ({e}). Using raw resume text fallback.")
+        state["resume_summary"] = json.dumps({
+            "candidate_name": "Candidate",
+            "projects": [{"name": "Technical Project", "description": state.get("resume_text", "")[:200]}],
+            "skills": {"languages": ["Python", "JavaScript"], "frameworks": ["React", "Flask"]},
+            "core_subjects": ["Data Structures", "Operating Systems", "DBMS", "Computer Networks", "OOP"]
+        })
         state["phase"] = "asking"
         state["next_action"] = "generate_question"
-    except Exception as e:
-        logger.error(f"[ResumeExtractor] Error: {e}", exc_info=True)
-        state["error"] = f"Resume extraction failed: {str(e)}"
-        state["phase"] = "error"
-        state["next_action"] = "error"
+        state["error"] = None
     
     return state
 
@@ -258,70 +273,145 @@ You have access to the candidate's resume summary (JSON) and the conversation hi
 Your job is to ask ONE concise, relevant technical question at a time.
 
 Rules:
-- For questions 1-2: Ask about a specific PROJECT from the resume (implementation details, challenges, tech choices, architecture)
+- For questions 1-2: You MUST ask about a SPECIFIC NAMED PROJECT listed in the resume JSON under "projects".
+  * Pick a real project name from the resume (e.g., "In your MockAI project, ...").
+  * Ask about implementation details, architecture, technology choices, challenges, or key features of THAT project.
+  * NEVER ask generic project questions. ALWAYS reference the actual project name from the resume.
+  * If there are multiple projects, ask about different ones for Q1 and Q2.
 - For questions 3-5: Ask about CORE CS SUBJECTS based on their skills (DSA, OS, DBMS, CN, OOP, Software Engineering)
 - Questions must be specific, not generic
 - Keep question to 2-3 sentences max
 - Vary topics - don't repeat the same concept
 - Make questions progressively more challenging
 
-Examples of good questions:
+Examples of good project questions (replace [Project Name] with the ACTUAL project name from resume):
 - "In your [Project Name] project, how did you handle database transactions to ensure data consistency?"
-- "You used Redis in your project. Can you explain the difference between Redis ZSET and HSET, and when you'd choose one over the other?"
-- "Explain how a B+ Tree differs from a B-Tree and why databases prefer B+ Trees for indexing."
+- "Your [Project Name] uses [Tech from resume]. Can you explain why you chose [Tech] over alternatives and what challenges you faced?"
+- "Walk me through the architecture of your [Project Name] — how do the components communicate and where did you face bottlenecks?"
 
 Output ONLY the question text. No preamble, no labels."""
 
-FOLLOWUP_GENERATOR_SYSTEM_PROMPT = """You are an expert Technical Interviewer.
+DEPTH_FOLLOWUP_SYSTEM_PROMPT = """You are an expert Technical Interviewer testing in-depth knowledge.
 
-The candidate gave an incomplete or partially incorrect answer. Generate ONE targeted follow-up question that:
-1. Probes deeper into what they got right
-2. Gently clarifies what they got wrong
-3. Helps them demonstrate more knowledge
+The candidate answered the previous question correctly and explained their project well. Now generate ONE deeper follow-up question that:
+1. References the SAME project or topic from the conversation — do NOT switch to a new topic or generic CS subject
+2. Digs deeper into what the candidate just explained: probe edge cases, internals, scaling, trade-offs, or design decisions
+3. Uses specific details from the candidate's own answer (e.g., "you mentioned X — what happens when Y?", "how would you scale this?", "what are the trade-offs of your approach?")
+4. Challenges the candidate to think beyond what they already explained
 
-Keep the follow-up to 2 sentences max. Be encouraging but probing.
-Output ONLY the follow-up question text."""
+Keep it to 2 sentences max. Be probing and specific. Reference what they said.
+Output ONLY the follow-up question text. No preamble."""
+
+CLARIFY_FOLLOWUP_SYSTEM_PROMPT = """You are an expert Technical Interviewer.
+
+The candidate gave an incomplete or incorrect answer about their project or topic. Generate ONE targeted follow-up question that:
+1. Stays on the SAME project or topic — do NOT switch topics
+2. Hints at the correct direction without giving away the answer
+3. Asks them to clarify or expand on the weakest part of their response
+4. Gives them a chance to recover and demonstrate partial knowledge
+
+Keep it to 2 sentences max. Be encouraging but precise.
+Output ONLY the follow-up question text. No preamble."""
+
+FALLBACK_PROJECT_QUESTIONS = [
+    "In your primary resume project, how did you handle backend architecture, data validation, and API authentication?",
+    "What were the biggest technical challenges you faced in building your main project, and how did you debug and optimize them?",
+    "Can you explain your database schema design for your project and how you handled data consistency and query performance?"
+]
+
+FALLBACK_CORE_QUESTIONS = [
+    "Explain the difference between a process and a thread in Operating Systems, and how context switching works.",
+    "Describe the ACID properties in database management systems and why isolation levels are critical for transactions.",
+    "What is the difference between a Binary Search Tree and an AVL Tree? Explain how tree balancing works.",
+    "Explain the TCP 3-Way Handshake in Computer Networks and how TCP differs from UDP in reliability and use cases.",
+    "Explain Object-Oriented Programming (OOP) principles: encapsulation, inheritance, polymorphism, and abstraction with real-world examples."
+]
 
 def question_generator_agent(state: InterviewState) -> InterviewState:
     """
     Agent 2: Generates the next technical question based on resume + conversation history.
-    Decides whether to ask a new main question or a follow-up.
+    - If phase == "depth_followup": asks a DEEPER question on same topic (answer was correct)
+    - If phase == "clarify_followup": asks a CLARIFYING question (answer was wrong/partial)
+    - Otherwise: generates a new main question
     """
     questions_asked = state.get("questions_asked", 0)
     followups_asked = state.get("followups_asked", 0)
     phase = state.get("phase", "asking")
-    
-    logger.info(f"[QuestionGenerator] Phase={phase}, QAsked={questions_asked}, Followups={followups_asked}")
-    
+    last_score = state.get("last_score", 0)
+
+    logger.info(f"[QuestionGenerator] Phase={phase}, QAsked={questions_asked}, Followups={followups_asked}, LastScore={last_score}")
+
     # Build conversation context
     history_text = _format_history(state.get("conversation_history", []))
     resume_summary = state.get("resume_summary", "{}")
-    
+
+    # Extract project names from resume for grounding follow-ups
+    resume_projects = []
     try:
-        if phase == "followup" and followups_asked < 1:
-            # Generate a follow-up question (max 1 follow-up per main question)
+        parsed_summary = json.loads(resume_summary)
+        resume_projects = [p.get("name", "") for p in parsed_summary.get("projects", []) if p.get("name")]
+    except Exception:
+        pass
+    projects_str = ", ".join(resume_projects) if resume_projects else "projects mentioned in resume"
+
+    try:
+        if phase in ("depth_followup", "clarify_followup") and followups_asked < MAX_FOLLOWUPS_PER_QUESTION:
+            # Choose prompt based on whether answer was correct or not
+            current_q = state.get("current_question", "")
+            current_a = state.get("current_answer", "")
+            current_topic = state.get("current_question_topic", "project")
+
+            if phase == "depth_followup":
+                system_prompt = DEPTH_FOLLOWUP_SYSTEM_PROMPT
+                hint_text = (
+                    f"The candidate answered correctly (score {last_score}/10).\n"
+                    f"Topic area: {current_topic}.\n"
+                    f"The question was: \"{current_q}\"\n"
+                    f"The candidate's answer was: \"{current_a}\"\n\n"
+                    f"Ask a DEEPER follow-up that references something specific the candidate just said. "
+                    f"Stay on the SAME project/topic. Do NOT switch to a new subject."
+                )
+            else:
+                system_prompt = CLARIFY_FOLLOWUP_SYSTEM_PROMPT
+                hint_text = (
+                    f"The candidate's answer was incomplete or partially wrong (score {last_score}/10).\n"
+                    f"Topic area: {current_topic}.\n"
+                    f"The question was: \"{current_q}\"\n"
+                    f"The candidate's answer was: \"{current_a}\"\n\n"
+                    f"Ask a clarifying follow-up that helps them expand on their answer. "
+                    f"Stay on the SAME project/topic. Do NOT switch to a new subject."
+                )
+
             messages = [
-                SystemMessage(content=FOLLOWUP_GENERATOR_SYSTEM_PROMPT),
+                SystemMessage(content=system_prompt),
                 HumanMessage(content=(
                     f"Resume Summary:\n{resume_summary}\n\n"
                     f"Conversation History:\n{history_text}\n\n"
-                    f"The candidate's last answer was incomplete. Generate a follow-up question."
+                    f"{hint_text}"
                 ))
             ]
             response = llm_questioner.invoke(messages)
             question = response.content.strip()
-            
+
             state["current_question"] = question
             state["followups_asked"] = followups_asked + 1
             state["phase"] = "asking"
             state["next_action"] = "wait_for_answer"
-            
-            logger.info(f"[QuestionGenerator] Follow-up question generated: {question[:80]}...")
-            
+
+            logger.info(f"[QuestionGenerator] {phase} question generated: {question[:80]}...")
+
         else:
             # Generate a new main question
             topic = "project" if questions_asked < 2 else "core_subject"
-            
+
+            # For project questions, explicitly list resume project names
+            extra_instruction = ""
+            if topic == "project":
+                extra_instruction = (
+                    f"IMPORTANT: Ask about one of these SPECIFIC projects from the resume: [{projects_str}]. "
+                    f"Use the actual project name in your question. Do NOT ask generic project questions."
+                )
+
             messages = [
                 SystemMessage(content=QUESTION_GENERATOR_SYSTEM_PROMPT),
                 HumanMessage(content=(
@@ -330,26 +420,48 @@ def question_generator_agent(state: InterviewState) -> InterviewState:
                     f"Generate question #{questions_asked + 1} of {MAX_QUESTIONS}. "
                     f"Topic type: {topic}. "
                     f"Questions already asked: {questions_asked}. "
-                    f"Do NOT repeat topics from history."
+                    f"Do NOT repeat topics from history. {extra_instruction}"
                 ))
             ]
             response = llm_questioner.invoke(messages)
             question = response.content.strip()
-            
+
             state["current_question"] = question
             state["current_question_topic"] = topic
             state["questions_asked"] = questions_asked + 1
-            state["followups_asked"] = 0  # Reset follow-up counter for new question
+            state["followups_asked"] = 0  # Reset follow-up counter for new main question
             state["phase"] = "asking"
             state["next_action"] = "wait_for_answer"
-            
+
             logger.info(f"[QuestionGenerator] Main question #{questions_asked + 1} generated: {question[:80]}...")
-    
+
     except Exception as e:
-        logger.error(f"[QuestionGenerator] Error: {e}", exc_info=True)
-        state["error"] = f"Question generation failed: {str(e)}"
-        state["next_action"] = "error"
-    
+        logger.warning(f"[QuestionGenerator] LLM generation failed: {e}. Using fallback question.")
+        if phase in ("depth_followup", "clarify_followup") and followups_asked < MAX_FOLLOWUPS_PER_QUESTION:
+            if phase == "depth_followup":
+                question = "Can you explain the internal implementation details, edge cases, and real-world trade-offs involved in what you just described?"
+            else:
+                question = "Could you clarify your answer in more detail? Try to explain the core concept, its purpose, and how it works step by step."
+            state["current_question"] = question
+            state["followups_asked"] = followups_asked + 1
+            state["phase"] = "asking"
+            state["next_action"] = "wait_for_answer"
+        else:
+            topic = "project" if questions_asked < 2 else "core_subject"
+            if topic == "project":
+                q_idx = min(questions_asked, len(FALLBACK_PROJECT_QUESTIONS) - 1)
+                question = FALLBACK_PROJECT_QUESTIONS[q_idx]
+            else:
+                core_idx = (questions_asked - 2) % len(FALLBACK_CORE_QUESTIONS)
+                question = FALLBACK_CORE_QUESTIONS[core_idx]
+
+            state["current_question"] = question
+            state["current_question_topic"] = topic
+            state["questions_asked"] = questions_asked + 1
+            state["followups_asked"] = 0
+            state["phase"] = "asking"
+            state["next_action"] = "wait_for_answer"
+
     return state
 
 
@@ -360,42 +472,57 @@ EVALUATOR_SYSTEM_PROMPT = """You are a strict but fair Technical Interview Evalu
 
 Evaluate the candidate's answer to the given technical question.
 
-Output a JSON object with these exact fields (no markdown, raw JSON):
+Output a JSON object with these exact fields (no markdown, raw JSON only):
 {
   "score": <integer 0-10>,
   "is_correct": <boolean>,
-  "needs_followup": <boolean>,
-  "feedback": "<2-3 sentence evaluation>",
-  "correct_answer_hint": "<brief hint about the correct/complete answer>",
+  "feedback": "<2-3 sentence evaluation of what they got right and wrong>",
+  "correct_answer_hint": "<brief explanation of the complete correct answer>",
   "topics_covered": ["<topic1>", "<topic2>"]
 }
 
-Scoring rubric:
-- 9-10: Excellent, comprehensive, technically accurate, includes edge cases
-- 7-8:  Good, mostly accurate, minor gaps
-- 5-6:  Partial understanding, key concept grasped but incomplete
-- 3-4:  Basic awareness, significant gaps
-- 1-2:  Minimal knowledge, mostly incorrect
-- 0:    No answer or completely wrong
+Scoring rubric (be STRICT and ACCURATE — do NOT give 8 to vague or wrong answers):
+- 9-10: Excellent — comprehensive, technically accurate, covers edge cases and internals
+- 7-8:  Good — mostly correct, shows real understanding, minor gaps only
+- 5-6:  Partial — grasps the basic concept but misses key details or has inaccuracies
+- 3-4:  Weak — some awareness but significant conceptual errors or very incomplete
+- 1-2:  Poor — answer is mostly incorrect, irrelevant, or shows minimal understanding
+- 0:    No answer, completely off-topic, or refuses to answer
 
-needs_followup = true if score < 6 and a follow-up would help the candidate demonstrate more knowledge.
-is_correct = true if score >= 6."""
+CRITICAL: Score based on TECHNICAL ACCURACY, not length. A short but precise answer can score 9.
+A long but vague or incorrect answer should score 3-4.
+is_correct = true only if score >= 7."""
 
 def evaluator_agent(state: InterviewState) -> InterviewState:
     """
     Agent 3: Evaluates the candidate's answer, assigns a score (0-10),
-    and decides whether a follow-up question is needed.
+    decides whether a follow-up is needed, and provides detailed feedback & correct answer hints.
     """
     question = state.get("current_question", "")
     answer = state.get("current_answer", "")
+    followups_asked = state.get("followups_asked", 0)
     
     logger.info(f"[Evaluator] Evaluating answer for: {question[:60]}...")
     
     if not answer.strip():
         # No answer provided
-        state["scores"].append(0)
-        state["question_feedbacks"].append("No answer provided.")
+        score = 0
+        is_correct = False
+        feedback = "No answer provided by candidate."
+        hint = "Providing a clear explanation, even partial, helps demonstrate technical understanding."
+        
+        state["last_score"] = score
+        state["last_is_correct"] = is_correct
+        state["last_feedback"] = feedback
+        state["last_hint"] = hint
+        
+        if followups_asked == 0:
+            state["scores"].append(score)
+            state["question_feedbacks"].append(f"Q: {question}\nA: (empty)\nScore: 0/10\nFeedback: {feedback}")
+            
+        state["phase"] = "asking"
         state["next_action"] = _decide_next_after_eval(state)
+        state["followups_asked"] = 0
         return state
     
     try:
@@ -407,67 +534,105 @@ def evaluator_agent(state: InterviewState) -> InterviewState:
                 f"Evaluate this answer strictly and return JSON."
             ))
         ]
-        
+
         response = llm_evaluator.invoke(messages)
         raw = response.content.strip()
-        
+
         # Extract JSON
         json_match = re.search(r'\{.*\}', raw, re.DOTALL)
         if json_match:
             eval_data = json.loads(json_match.group(0))
         else:
             raise ValueError("No JSON found in evaluator response")
-        
+
         score = max(0, min(10, int(eval_data.get("score", 5))))
-        needs_followup = eval_data.get("needs_followup", False)
-        feedback = eval_data.get("feedback", "")
-        followups_asked = state.get("followups_asked", 0)
-        
-        logger.info(f"[Evaluator] Score: {score}/10, NeedsFollowup: {needs_followup}")
-        
-        # Save to conversation history
-        state["conversation_history"].append({
-            "role": "assistant",
-            "content": question
-        })
-        state["conversation_history"].append({
-            "role": "user", 
-            "content": answer
-        })
-        
-        # Only save score for main questions (not follow-ups)
-        if followups_asked == 0:
-            state["scores"].append(score)
-            state["question_feedbacks"].append(
-                f"Q: {question}\nA: {answer}\nScore: {score}/10\nFeedback: {feedback}"
-            )
-        else:
-            # Follow-up: update last score if improvement
-            if state["scores"]:
-                old_score = state["scores"][-1]
-                new_score = max(old_score, score)  # Take the best
-                state["scores"][-1] = new_score
-                logger.info(f"[Evaluator] Follow-up improved score: {old_score} → {new_score}")
-        
-        # Decide next action
-        if needs_followup and followups_asked < 1:
-            state["phase"] = "followup"
-            state["next_action"] = "generate_followup"
-        else:
-            state["next_action"] = _decide_next_after_eval(state)
-            state["followups_asked"] = 0
-        
-    except (json.JSONDecodeError, ValueError) as e:
-        logger.warning(f"[Evaluator] JSON parse error: {e}. Assigning default score.")
-        state["scores"].append(5)
-        state["question_feedbacks"].append(f"Q: {question}\nA: {answer}\nScore: 5/10 (default)")
-        state["next_action"] = _decide_next_after_eval(state)
+        is_correct = bool(eval_data.get("is_correct", score >= CORRECT_THRESHOLD))
+        feedback = eval_data.get("feedback", "Answer evaluated.")
+        hint = eval_data.get("correct_answer_hint", "Cover core principles, edge cases, and architecture.")
+
     except Exception as e:
-        logger.error(f"[Evaluator] Error: {e}", exc_info=True)
-        state["scores"].append(0)
-        state["question_feedbacks"].append(f"Evaluation error: {str(e)}")
+        logger.warning(f"[Evaluator] Fallback evaluation triggered (Reason: {e}).")
+        # Quality-aware fallback: use keyword analysis to estimate correctness
+        answer_lower = answer.strip().lower()
+        words = len(answer.strip().split())
+
+        # Check for filler / non-answer patterns
+        vague_phrases = ["i don't know", "i'm not sure", "not sure", "no idea", "idk", "i don't remember"]
+        is_vague = any(p in answer_lower for p in vague_phrases)
+
+        # Extract key technical terms from question to check relevance
+        question_lower = question.lower()
+        tech_keywords = [
+            "process", "thread", "memory", "heap", "stack", "pointer", "algorithm", "complexity",
+            "database", "transaction", "index", "query", "sql", "api", "rest", "http", "tcp", "cache",
+            "hash", "tree", "graph", "sort", "search", "class", "object", "inheritance", "polymorphism",
+            "encapsulation", "exception", "concurrency", "deadlock", "mutex", "semaphore", "docker",
+            "kubernetes", "microservice", "authentication", "authorization", "jwt", "oauth", "async",
+            "callback", "promise", "normalization", "acid", "join", "foreign key", "primary key"
+        ]
+        relevant_terms = [kw for kw in tech_keywords if kw in answer_lower]
+
+        if is_vague or words < 5:
+            score = 0
+        elif words < 15 or len(relevant_terms) == 0:
+            score = 3  # Very brief or off-topic
+        elif words < 30 or len(relevant_terms) < 2:
+            score = 5  # Partial answer
+        elif words >= 30 and len(relevant_terms) >= 3:
+            score = 7  # Decent, relevant answer
+        else:
+            score = 5  # Default partial
+
+        is_correct = score >= CORRECT_THRESHOLD
+        feedback = (
+            f"Answer evaluated heuristically ({words} words, {len(relevant_terms)} relevant technical terms found). "
+            + ("Shows some relevant technical knowledge." if is_correct
+               else "Answer lacks sufficient technical depth or is off-topic.")
+        )
+        hint = "A strong answer defines the core concept, explains how it works internally, and covers real-world use cases or trade-offs."
+
+    state["last_score"] = score
+    state["last_is_correct"] = is_correct
+    state["last_feedback"] = feedback
+    state["last_hint"] = hint
+
+    logger.info(f"[Evaluator] Score: {score}/10, IsCorrect: {is_correct}")
+
+    # Save to conversation history
+    state["conversation_history"].append({"role": "assistant", "content": question})
+    state["conversation_history"].append({"role": "user", "content": answer})
+
+    # Score tracking — only record score on main question (followups_asked == 0)
+    if followups_asked == 0:
+        state["scores"].append(score)
+        state["question_feedbacks"].append(
+            f"Q: {question}\nA: {answer}\nScore: {score}/10\nFeedback: {feedback}"
+        )
+    else:
+        # On follow-up: update score to max of original + follow-up
+        if state["scores"]:
+            old_score = state["scores"][-1]
+            new_score = max(old_score, score)
+            state["scores"][-1] = new_score
+            logger.info(f"[Evaluator] Follow-up updated score: {old_score} → {new_score}")
+
+    # Decide next action:
+    # - If this is the first answer to a main question, ALWAYS ask a follow-up
+    #   (depth follow-up if correct, clarifying follow-up if wrong)
+    # - If this is the follow-up answer, move to next main question or report
+    if followups_asked == 0:
+        # Always ask a follow-up to probe deeper
+        if is_correct:
+            state["phase"] = "depth_followup"    # Correct → ask deeper question
+        else:
+            state["phase"] = "clarify_followup"  # Wrong → ask clarifying question
+        state["next_action"] = "generate_followup"
+    else:
+        # Follow-up already done → move to next main question or report
+        state["phase"] = "asking"
         state["next_action"] = _decide_next_after_eval(state)
-    
+        state["followups_asked"] = 0
+
     return state
 
 
@@ -576,9 +741,8 @@ def route_after_evaluation(state: InterviewState) -> str:
     action = state.get("next_action", "generate_question")
     if action == "generate_report":
         return "generate_report"
-    elif action == "generate_followup" or state.get("phase") == "followup":
-        return "generate_question"  # Question generator handles follow-ups
     else:
+        # Both follow-up types and next main question go through question_generator_agent
         return "generate_question"
 
 
@@ -691,6 +855,10 @@ def _init_interview_state(resume_text: str = "", resume_summary: str = "") -> In
         scores=[],
         question_feedbacks=[],
         total_marks=0,
+        last_score=None,
+        last_is_correct=None,
+        last_feedback=None,
+        last_hint=None,
         phase="start",
         next_action="extract_resume",
         error=None,
@@ -943,17 +1111,31 @@ def submit_answer():
             # Generate next question (new or follow-up)
             state = question_generator_agent(state)
             _save_interview_state(session_id, state)
-            
-            is_followup = state.get("phase") == "followup" or state.get("followups_asked", 0) > 0
-            
+
+            followups_now = state.get("followups_asked", 0)
+            is_followup = followups_now > 0
+            prev_phase_was_correct = state.get("last_is_correct", True)
+
+            if is_followup and prev_phase_was_correct:
+                followup_type = "depth_followup"    # Correct answer → depth probe
+            elif is_followup:
+                followup_type = "clarify_followup"  # Wrong answer → clarification
+            else:
+                followup_type = "question"           # New main question
+
             return jsonify({
-                "status": "followup" if is_followup else "question",
+                "status": followup_type,
                 "question": state["current_question"],
                 "question_number": state["questions_asked"],
                 "total_questions": MAX_QUESTIONS,
                 "topic": state.get("current_question_topic", ""),
                 "scores_so_far": state["scores"],
                 "is_followup": is_followup,
+                "followup_type": followup_type,
+                "last_score": state.get("last_score", 0),
+                "is_correct": state.get("last_is_correct", True),
+                "feedback": state.get("last_feedback", ""),
+                "correct_answer_hint": state.get("last_hint", ""),
                 "marks_earned_so_far": sum(state["scores"]),
                 "max_marks": MAX_QUESTIONS * MARKS_PER_QUESTION
             }), 200

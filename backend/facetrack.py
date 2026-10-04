@@ -52,7 +52,11 @@ def play_alert():
 
 def detect_gaze(eye_frame):
     try:
+        if eye_frame is None or eye_frame.size == 0:
+            return "center", 0.5
         height, width = eye_frame.shape[:2]
+        if height == 0 or width == 0:
+            return "center", 0.5
         _, threshold_eye = cv2.threshold(eye_frame, 55, 255, cv2.THRESH_BINARY_INV)
         kernel = np.ones((3, 3), np.uint8)
         threshold_eye = cv2.morphologyEx(threshold_eye, cv2.MORPH_OPEN, kernel, iterations=1)
@@ -79,11 +83,20 @@ def detect_gaze(eye_frame):
 def process_image(image_data):
     global looking_away, looking_away_start_time, last_alert_time, warnings, long_blink_count
     try:
-        img_bytes = base64.b64decode(image_data.split(',')[1])
+        if not image_data:
+            raise ValueError("No image data provided")
+        if ',' in image_data:
+            image_data = image_data.split(',')[1]
+
+        img_bytes = base64.b64decode(image_data)
         np_arr = np.frombuffer(img_bytes, np.uint8)
+        if np_arr is None or np_arr.size == 0:
+            raise ValueError("Failed to read image bytes buffer")
+
         frame = cv2.imdecode(np_arr, cv2.IMREAD_COLOR)
-        if frame is None:
-            raise ValueError("Failed to decode image")
+        if frame is None or frame.size == 0:
+            raise ValueError("Failed to decode image frame")
+
         gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
         faces = face_cascade.detectMultiScale(gray, 1.3, 5)
         current_time = time.time()
@@ -108,7 +121,12 @@ def process_image(image_data):
         else:
             looking_away = False
             for (x, y, w, h) in faces:
+                if w <= 0 or h <= 0:
+                    continue
                 roi_gray = gray[y:y + h, x:x + w]
+                if roi_gray is None or roi_gray.size == 0:
+                    continue
+
                 eyes = eye_cascade.detectMultiScale(roi_gray, 1.1, 5)
                 if len(eyes) == 0:
                     eyes_closed = True
@@ -117,7 +135,11 @@ def process_image(image_data):
                         long_blink_count += 1
                 else:
                     for (ex, ey, ew, eh) in eyes:
+                        if ew <= 0 or eh <= 0:
+                            continue
                         eye_frame = roi_gray[ey:ey + eh, ex:ex + ew]
+                        if eye_frame is None or eye_frame.size == 0:
+                            continue
                         direction, _ = detect_gaze(eye_frame)
                         look_direction = direction
                         looking_at_screen = direction == "center"

@@ -12,11 +12,11 @@ const AdvancedFormMonitoringSystem = () => {
   const [soundLevel, setSoundLevel] = useState(0);
   const [isHighSound, setIsHighSound] = useState(false);
   const [showSoundAlert, setShowSoundAlert] = useState(false);
-  
+
   // Full screen state
   const [isFullScreen, setIsFullScreen] = useState(false);
   const [isTestMode, setIsTestMode] = useState(false);
-  
+
   // Security alert state
   const [showSecurityAlert, setShowSecurityAlert] = useState(false);
   const [securityAlertMessage, setSecurityAlertMessage] = useState("");
@@ -27,13 +27,16 @@ const AdvancedFormMonitoringSystem = () => {
   const [answers, setAnswers] = useState({});
   const [loadingQuestions, setLoadingQuestions] = useState(false);
   const [questionError, setQuestionError] = useState(null);
+  const [isLlmGenerated, setIsLlmGenerated] = useState(false);
+  const [weakTopics, setWeakTopics] = useState([]);
+  const [attemptNumber, setAttemptNumber] = useState(1);
 
   const navigate = useNavigate();
-  
+
   // Counters
   const [tabSwitchCount, setTabSwitchCount] = useState(0);
   const [soundAlertCount, setSoundAlertCount] = useState(0);
-  
+
   // Refs
   const videoRef = useRef(null);
   const audioContextRef = useRef(null);
@@ -54,13 +57,19 @@ const AdvancedFormMonitoringSystem = () => {
   const MAX_SOUND_ALERTS = 30;
   const FULLSCREEN_CHECK_INTERVAL = 2000;
 
-  // Fetch random questions from backend
+  // Fetch random / Groq LLaMA personalized questions from backend
   const fetchQuestions = async () => {
     try {
       setLoadingQuestions(true);
       setQuestionError(null);
 
-      const response = await fetch('http://localhost:5000/api/get-random-questions', {
+      const candidateData = JSON.parse(localStorage.getItem('candidate')) || {};
+      const params = new URLSearchParams({
+        email: candidateData.email || '',
+        candidate_id: candidateData.id || '',
+        count: '15'
+      });
+      const response = await fetch(`http://localhost:5000/api/get-random-questions?${params.toString()}`, {
         method: 'GET',
         headers: {
           'Content-Type': 'application/json',
@@ -72,13 +81,16 @@ const AdvancedFormMonitoringSystem = () => {
       }
 
       const data = await response.json();
-      console.log('Fetched questions:', data); // Debug log
+      console.log('Fetched questions response:', data); // Debug log
 
-      // Handle both cases: direct array or wrapped in 'questions' key
       const fetchedQuestions = Array.isArray(data) ? data : data.questions || [];
       if (fetchedQuestions.length === 0) {
         throw new Error('No questions returned from the server');
       }
+
+      setIsLlmGenerated(!!data.is_llm_generated);
+      setWeakTopics(data.weak_topics || []);
+      setAttemptNumber(data.attempt || 1);
 
       setQuestions(fetchedQuestions);
       setAnswers({}); // Reset answers
@@ -99,44 +111,87 @@ const AdvancedFormMonitoringSystem = () => {
     }));
   };
 
+  // Helper to compare user answer and correct answer robustly
+  const checkAnswerCorrectness = (userAnswer, correctAnswer, options = []) => {
+    if (!userAnswer || !correctAnswer) return false;
+
+    const rawUser = String(userAnswer).trim();
+    const rawCorrect = String(correctAnswer).trim();
+
+    // 1. Direct exact match (case-insensitive)
+    if (rawUser.toLowerCase() === rawCorrect.toLowerCase()) return true;
+
+    // Remove prefixes like "A. ", "A) ", "A: ", "A - "
+    const stripPrefix = (str) => str.replace(/^[A-Da-d][.\s)\:-]+\s*/, '').trim();
+
+    // Extract option letter if present (e.g. "A. 14.5%" -> "A")
+    const getOptionLetter = (str) => {
+      const match = str.match(/^([A-Da-d])[.\s)\:-]/);
+      return match ? match[1].toUpperCase() : null;
+    };
+
+    const userClean = stripPrefix(rawUser).toLowerCase();
+    const correctClean = stripPrefix(rawCorrect).toLowerCase();
+
+    // 2. Prefix-stripped text match ("A. 14.5%" vs "14.5%")
+    if (userClean && userClean === correctClean) return true;
+
+    // 3. Option letter match (e.g. correctAnswer is "A" or "a", userAnswer is "A. 14.5%")
+    const userLetter = getOptionLetter(rawUser);
+    const correctLetter = getOptionLetter(rawCorrect) || (rawCorrect.length === 1 ? rawCorrect.toUpperCase() : null);
+
+    if (userLetter && correctLetter && userLetter === correctLetter) return true;
+
+    // 4. Option match against available options array
+    if (options && Array.isArray(options)) {
+      const matchedOption = options.find(opt => stripPrefix(String(opt)).toLowerCase() === correctClean);
+      if (matchedOption && rawUser.toLowerCase() === String(matchedOption).toLowerCase()) {
+        return true;
+      }
+    }
+
+    return false;
+  };
+
   // Submit results to backend
   const submitResults = async () => {
     try {
-      // Retrieve candidate data from localStorage
       const candidateData = JSON.parse(localStorage.getItem('candidate')) || {};
       console.log('Candidate data:', candidateData); // Debug log
-
-      // Log questions and answers for debugging
       console.log('Questions:', questions);
       console.log('Answers:', answers);
 
-      // Calculate score
       let score = 0;
+      const questionResults = [];
+
       questions.forEach((question, index) => {
-        const userAnswer = answers[index];
-        const correctAnswer = question.correctAnswer || question.correct_answer || question.answer; // Fallback for different field names
-        console.log(`Question ${index + 1}:`);
-        console.log(`  User Answer: ${userAnswer}`);
-        console.log(`  Correct Answer: ${correctAnswer}`);
-        
-        // Normalize answers for comparison (trim whitespace, convert to string)
+        const userAnswer = answers[index] || '';
+        const correctAnswer = question.correctAnswer || question.correct_answer || question.answer || '';
+        const topic = question.topic || "Profit and Loss";
+
         const normalizedUserAnswer = userAnswer ? String(userAnswer).trim() : '';
         const normalizedCorrectAnswer = correctAnswer ? String(correctAnswer).trim() : '';
-        
-        if (normalizedUserAnswer && normalizedUserAnswer === normalizedCorrectAnswer) {
+        const isCorrect = checkAnswerCorrectness(normalizedUserAnswer, normalizedCorrectAnswer, question.options);
+
+        console.log(`Q${index + 1}: User Answer="${normalizedUserAnswer}" | Correct="${normalizedCorrectAnswer}" | isCorrect=${isCorrect}`);
+
+        if (isCorrect) {
           score += 1;
-          console.log(`  Correct! Score: ${score}`);
-        } else {
-          console.log(`  Incorrect.`);
         }
+
+        questionResults.push({
+          question: question.question,
+          topic: topic,
+          user_answer: normalizedUserAnswer,
+          correct_answer: normalizedCorrectAnswer,
+          is_correct: isCorrect
+        });
       });
 
-      // Calculate percentage
       const totalQuestions = questions.length;
       const percentage = totalQuestions > 0 ? (score / totalQuestions) * 100 : 0;
-      console.log(`Final Score: ${score}/${totalQuestions}, Percentage: ${percentage}%`); // Debug log
+      console.log(`Final Score: ${score}/${totalQuestions}, Percentage: ${percentage}%`);
 
-      // Prepare data to send
       const resultData = {
         candidate: {
           id: candidateData.id || '',
@@ -148,10 +203,11 @@ const AdvancedFormMonitoringSystem = () => {
         score,
         percentage,
         total_questions: totalQuestions,
-        round: 1
+        round: 1,
+        question_results: questionResults
       };
 
-      console.log('Sending result data:', resultData); // Debug log
+      console.log('Sending result data with topic details:', resultData);
 
       const response = await fetch('http://localhost:5000/api/submit-results', {
         method: 'POST',
@@ -181,12 +237,12 @@ const AdvancedFormMonitoringSystem = () => {
       triggerSecurityAlert("Excessive tab switching detected. Your test session has been terminated.");
       return true;
     }
-    
+
     if (soundAlertCount > MAX_SOUND_ALERTS) {
       triggerSecurityAlert("Excessive background noise detected. Your test session has been terminated.");
       return true;
     }
-    
+
     return false;
   };
 
@@ -212,11 +268,11 @@ const AdvancedFormMonitoringSystem = () => {
       setSoundAlertCount(0);
       setShowSecurityAlert(false);
       setFullScreenWarningCount(0);
-      
+
       fullScreenCheckIntervalRef.current = setInterval(() => {
-        const isDocFullScreen = document.fullscreenElement || document.mozFullScreenElement || 
-                                document.webkitFullscreenElement || document.msFullscreenElement;
-        
+        const isDocFullScreen = document.fullscreenElement || document.mozFullScreenElement ||
+          document.webkitFullscreenElement || document.msFullscreenElement;
+
         if (!isDocFullScreen && isTestMode) {
           setFullScreenWarningCount(prev => prev + 1);
           if (fullScreenWarningCount >= 3) {
@@ -237,7 +293,7 @@ const AdvancedFormMonitoringSystem = () => {
     try {
       setCameraError(null);
       const constraints = {
-        video: { 
+        video: {
           width: { ideal: 640 },
           height: { ideal: 480 },
           facingMode: 'user'
@@ -251,8 +307,8 @@ const AdvancedFormMonitoringSystem = () => {
       }
     } catch (err) {
       console.error("Error accessing webcam:", err);
-      setCameraError(err.name === 'NotAllowedError' ? 
-        "Camera access denied. Please allow camera access." : 
+      setCameraError(err.name === 'NotAllowedError' ?
+        "Camera access denied. Please allow camera access." :
         `Could not access webcam: ${err.message}`);
     }
   };
@@ -303,8 +359,8 @@ const AdvancedFormMonitoringSystem = () => {
       setIsAudioMonitoring(true);
     } catch (err) {
       console.error("Error accessing microphone:", err);
-      setAudioError(err.name === 'NotAllowedError' ? 
-        "Microphone access denied. Please allow microphone access." : 
+      setAudioError(err.name === 'NotAllowedError' ?
+        "Microphone access denied. Please allow microphone access." :
         `Could not access microphone: ${err.message}`);
     }
   };
@@ -353,10 +409,10 @@ const AdvancedFormMonitoringSystem = () => {
   // Fullscreen controls
   const enterFullScreen = () => {
     if (containerRef.current) {
-      containerRef.current.requestFullscreen?.() || 
-      containerRef.current.mozRequestFullScreen?.() || 
-      containerRef.current.webkitRequestFullscreen?.() || 
-      containerRef.current.msRequestFullscreen?.();
+      containerRef.current.requestFullscreen?.() ||
+        containerRef.current.mozRequestFullScreen?.() ||
+        containerRef.current.webkitRequestFullscreen?.() ||
+        containerRef.current.msRequestFullscreen?.();
     }
   };
 
@@ -388,8 +444,8 @@ const AdvancedFormMonitoringSystem = () => {
   // Event listeners
   useEffect(() => {
     const handleFullScreenChange = () => {
-      const isDocFullScreen = document.fullscreenElement || document.mozFullScreenElement || 
-                              document.webkitFullscreenElement || document.msFullscreenElement;
+      const isDocFullScreen = document.fullscreenElement || document.mozFullScreenElement ||
+        document.webkitFullscreenElement || document.msFullscreenElement;
       setIsFullScreen(!!isDocFullScreen);
       if (!isDocFullScreen && isTestMode) {
         setFullScreenWarningCount(prev => prev + 1);
@@ -460,6 +516,17 @@ const AdvancedFormMonitoringSystem = () => {
     }
   }, []);
 
+  // Confirm and submit test
+  const handleSubmitButtonClick = () => {
+    const answeredCount = Object.keys(answers).length;
+    const totalCount = questions.length;
+    if (answeredCount < totalCount) {
+      const confirmSubmit = window.confirm(`You have answered ${answeredCount} of ${totalCount} questions. Are you sure you want to submit?`);
+      if (!confirmSubmit) return;
+    }
+    endTest();
+  };
+
   return (
     <div ref={containerRef} className="flex flex-col bg-gray-100 min-h-screen">
       <div className={`bg-blue-600 text-white p-3 ${isTestMode ? 'sticky top-0 z-10' : ''}`}>
@@ -468,11 +535,20 @@ const AdvancedFormMonitoringSystem = () => {
           {isTestMode ? (
             <div className="flex items-center space-x-4">
               <div className="text-sm font-medium bg-blue-700 px-3 py-1 rounded-full">
-                Tab Switches: <span className={tabSwitchCount > 0 ? `text-${tabSwitchCount > MAX_TAB_SWITCHES/2 ? 'red' : 'yellow'}-300 font-bold` : 'text-green-300'}>{tabSwitchCount}</span>
+                Answered: <span className="text-green-300 font-bold">{Object.keys(answers).length} / {questions.length}</span>
               </div>
               <div className="text-sm font-medium bg-blue-700 px-3 py-1 rounded-full">
-                Sound Alerts: <span className={soundAlertCount > 0 ? `text-${soundAlertCount > MAX_SOUND_ALERTS/2 ? 'red' : 'yellow'}-300 font-bold` : 'text-green-300'}>{soundAlertCount}</span>
+                Tab Switches: <span className={tabSwitchCount > 0 ? `text-${tabSwitchCount > MAX_TAB_SWITCHES / 2 ? 'red' : 'yellow'}-300 font-bold` : 'text-green-300'}>{tabSwitchCount}</span>
               </div>
+              <div className="text-sm font-medium bg-blue-700 px-3 py-1 rounded-full">
+                Sound Alerts: <span className={soundAlertCount > 0 ? `text-${soundAlertCount > MAX_SOUND_ALERTS / 2 ? 'red' : 'yellow'}-300 font-bold` : 'text-green-300'}>{soundAlertCount}</span>
+              </div>
+              <button
+                onClick={handleSubmitButtonClick}
+                className="bg-green-500 hover:bg-green-600 text-white px-3 py-1 rounded text-sm font-bold shadow"
+              >
+                Submit Test
+              </button>
               <button
                 onClick={endTest}
                 className="bg-red-500 hover:bg-red-600 text-white px-3 py-1 rounded text-sm"
@@ -517,7 +593,7 @@ const AdvancedFormMonitoringSystem = () => {
       <div className={`flex flex-col md:flex-row gap-6 p-4 flex-grow ${isTestMode ? 'max-w-full' : 'max-w-6xl mx-auto'}`}>
         <div className={`bg-white rounded-lg shadow-md p-4 ${isTestMode ? 'w-full md:w-1/3' : 'w-full md:w-1/2'}`}>
           <h2 className="text-xl font-bold mb-4 text-center">Monitoring System</h2>
-          
+
           {showSoundAlert && (
             <div className="bg-red-100 border-l-4 border-red-500 text-red-700 p-3 mb-4 rounded shadow-md animate-pulse">
               <div className="flex items-center">
@@ -553,8 +629,8 @@ const AdvancedFormMonitoringSystem = () => {
               </span>
             </div>
             <div className="w-full bg-gray-200 rounded-full h-2.5">
-              <div 
-                className={`h-2.5 rounded-full ${isHighSound ? 'bg-red-600' : 'bg-green-500'}`} 
+              <div
+                className={`h-2.5 rounded-full ${isHighSound ? 'bg-red-600' : 'bg-green-500'}`}
                 style={{ width: `${Math.min(soundLevel * 100, 100)}%` }}
               ></div>
             </div>
@@ -566,22 +642,20 @@ const AdvancedFormMonitoringSystem = () => {
             <div className="grid grid-cols-2 gap-3">
               <div>
                 <div className="text-xs text-gray-500">Tab Switches</div>
-                <div className={`font-bold ${
-                  tabSwitchCount === 0 ? 'text-green-600' :
+                <div className={`font-bold ${tabSwitchCount === 0 ? 'text-green-600' :
                   tabSwitchCount > MAX_TAB_SWITCHES ? 'text-red-600' :
-                  tabSwitchCount > MAX_TAB_SWITCHES/2 ? 'text-yellow-600' : 'text-green-600'
-                }`}>
-                  {tabSwitchCount} {tabSwitchCount > MAX_TAB_SWITCHES/2 && tabSwitchCount <= MAX_TAB_SWITCHES && <span className="text-xs">⚠️</span>}
+                    tabSwitchCount > MAX_TAB_SWITCHES / 2 ? 'text-yellow-600' : 'text-green-600'
+                  }`}>
+                  {tabSwitchCount} {tabSwitchCount > MAX_TAB_SWITCHES / 2 && tabSwitchCount <= MAX_TAB_SWITCHES && <span className="text-xs">⚠️</span>}
                 </div>
               </div>
               <div>
                 <div className="text-xs text-gray-500">Sound Alerts</div>
-                <div className={`font-bold ${
-                  soundAlertCount === 0 ? 'text-green-600' :
+                <div className={`font-bold ${soundAlertCount === 0 ? 'text-green-600' :
                   soundAlertCount > MAX_SOUND_ALERTS ? 'text-red-600' :
-                  soundAlertCount > MAX_SOUND_ALERTS/2 ? 'text-yellow-600' : 'text-green-600'
-                }`}>
-                  {soundAlertCount} {soundAlertCount > MAX_SOUND_ALERTS/2 && soundAlertCount <= MAX_SOUND_ALERTS && <span className="text-xs">⚠️</span>}
+                    soundAlertCount > MAX_SOUND_ALERTS / 2 ? 'text-yellow-600' : 'text-green-600'
+                  }`}>
+                  {soundAlertCount} {soundAlertCount > MAX_SOUND_ALERTS / 2 && soundAlertCount <= MAX_SOUND_ALERTS && <span className="text-xs">⚠️</span>}
                 </div>
               </div>
             </div>
@@ -651,9 +725,9 @@ const AdvancedFormMonitoringSystem = () => {
             <div className="mt-4">
               <h3 className="font-medium mb-2">Captured Image:</h3>
               <div className="bg-gray-100 p-2 rounded-lg">
-                <a 
-                  href={capturedImage} 
-                  download="webcam-image.jpg" 
+                <a
+                  href={capturedImage}
+                  download="webcam-image.jpg"
                   className="inline-block mt-2 bg-blue-500 text-white px-3 py-1 rounded hover:bg-blue-600"
                 >
                   Download Image
@@ -665,7 +739,23 @@ const AdvancedFormMonitoringSystem = () => {
 
         <div className={`assessment-section bg-white rounded-lg shadow-md p-4 ${isTestMode ? 'w-full md:w-2/3' : 'w-full md:w-1/2'}`}>
           <h2 className="text-xl font-bold mb-4 text-center">Aptitude Test</h2>
-          
+
+          {isLlmGenerated && (
+            <div className="mb-4 bg-purple-50 border-l-4 border-purple-600 p-3 rounded-lg flex items-center justify-between shadow-sm">
+              <div>
+                <div className="flex items-center space-x-2">
+                  <span className="bg-purple-600 text-white text-xs px-2 py-0.5 rounded font-bold uppercase tracking-wider">Groq LLaMA AI</span>
+                  <span className="text-purple-900 font-bold text-sm">Personalized Test (Attempt #{attemptNumber})</span>
+                </div>
+                {weakTopics.length > 0 && (
+                  <p className="text-xs text-purple-700 mt-1">
+                    <span className="font-semibold">Priority Weak Topics:</span> {weakTopics.join(", ")}
+                  </p>
+                )}
+              </div>
+            </div>
+          )}
+
           {isTestMode && (
             <div className="mb-4 bg-yellow-50 border-l-4 border-yellow-400 p-3 rounded-lg">
               <p className="text-sm font-medium text-yellow-800">
@@ -686,10 +776,17 @@ const AdvancedFormMonitoringSystem = () => {
               <div className="p-4 space-y-6">
                 {questions.map((q, index) => (
                   <div key={index} className="border-b pb-4">
-                    <h3 className="text-lg font-medium mb-2">{index + 1}. {q.question}</h3>
+                    <div className="flex items-start justify-between mb-2">
+                      <h3 className="text-lg font-medium text-gray-900 flex-1">{index + 1}. {q.question}</h3>
+                      {q.topic && (
+                        <span className="ml-2 px-2.5 py-0.5 rounded-full text-xs font-semibold bg-indigo-100 text-indigo-800 shrink-0">
+                          {q.topic}
+                        </span>
+                      )}
+                    </div>
                     <div className="space-y-2">
                       {q.options.map((option, optIndex) => (
-                        <label key={optIndex} className="flex items-center space-x-2">
+                        <label key={optIndex} className="flex items-center space-x-2 cursor-pointer hover:bg-gray-50 p-1.5 rounded transition-colors">
                           <input
                             type="radio"
                             name={`question-${index}`}
@@ -698,12 +795,22 @@ const AdvancedFormMonitoringSystem = () => {
                             onChange={() => handleAnswerSelect(index, option)}
                             className="form-radio h-4 w-4 text-blue-600"
                           />
-                          <span>{option}</span>
+                          <span className="text-gray-800">{option}</span>
                         </label>
                       ))}
                     </div>
                   </div>
                 ))}
+                {isTestMode && (
+                  <div className="pt-4 text-center">
+                    <button
+                      onClick={handleSubmitButtonClick}
+                      className="bg-green-600 hover:bg-green-700 text-white font-bold px-8 py-3 rounded-lg shadow-md hover:shadow-lg transition-all"
+                    >
+                      Submit Test Answers ({Object.keys(answers).length} / {questions.length} Answered)
+                    </button>
+                  </div>
+                )}
               </div>
             ) : (
               <div className="text-center p-4">Click "Start Test" to begin the aptitude test</div>

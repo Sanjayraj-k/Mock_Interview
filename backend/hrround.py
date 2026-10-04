@@ -3,15 +3,21 @@ import logging
 import re
 from uuid import uuid4
 from flask import Blueprint, request, jsonify, session
-from langchain_groq import ChatGroq
-from langchain_core.prompts import PromptTemplate
-from langchain_classic.chains import LLMChain
-from langchain_classic.memory import ConversationBufferMemory
-from dotenv import load_dotenv
 
 # Configure logging
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 logger = logging.getLogger(__name__)
+
+try:
+    from langchain_groq import ChatGroq
+except Exception as import_err:
+    ChatGroq = None
+    logger.warning(f"Could not import ChatGroq in hrround.py: {import_err}")
+
+from langchain_core.prompts import PromptTemplate
+from langchain_classic.chains import LLMChain
+from langchain_classic.memory import ConversationBufferMemory
+from dotenv import load_dotenv
 
 # Blueprint for HR Behavioral Interview
 hrround_bp = Blueprint('hrround', __name__, url_prefix='/hrround')
@@ -21,17 +27,15 @@ logger.info("Starting HR Behavioral Interview agent...")
 # Load environment variables
 load_dotenv()
 GROQ_API_KEY = os.getenv("GROQ_API_KEY")
-if not GROQ_API_KEY:
-    logger.error("GROQ_API_KEY not found in .env file")
-    raise ValueError("GROQ_API_KEY not found. Please set it in your .env file.")
 
 # Initialize Groq LLM
-try:
-    llm = ChatGroq(model_name="llama-3.1-8b-instant", groq_api_key=GROQ_API_KEY, temperature=0.7, max_tokens=250)
-    logger.info("HR Round: Groq LLM initialized successfully")
-except Exception as e:
-    logger.error(f"Error initializing Groq LLM for HR Round: {str(e)}", exc_info=True)
-    raise
+llm = None
+if ChatGroq and GROQ_API_KEY:
+    try:
+        llm = ChatGroq(model_name="llama-3.3-70b-versatile", groq_api_key=GROQ_API_KEY, temperature=0.7, max_tokens=250)
+        logger.info("HR Round: Groq LLM initialized successfully")
+    except Exception as e:
+        logger.warning(f"Error initializing Groq LLM for HR Round: {str(e)}")
 
 # === HR BEHAVIORAL QUESTION PROMPTS ===
 hr_memory_store = {}
@@ -81,6 +85,7 @@ Keep it to 2-3 lines."""
 )
 
 # Q5: Adaptability to organizational change
+
 hr_adaptability_prompt = PromptTemplate(
     input_variables=["history"],
     template="""You are an experienced HR interviewer. Based on the conversation history: {history}

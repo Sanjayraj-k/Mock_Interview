@@ -8,7 +8,15 @@ import base64
 import numpy as np
 import cv2
 from flask import Blueprint, request, jsonify, session
-from langchain_groq import ChatGroq
+# Configure logging
+logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
+logger = logging.getLogger(__name__)
+
+try:
+    from langchain_groq import ChatGroq
+except Exception as import_err:
+    ChatGroq = None
+    logger.warning(f"Could not import ChatGroq in interview.py: {import_err}")
 from langchain_core.prompts import PromptTemplate
 from langchain_classic.chains import LLMChain
 from langchain_classic.memory import ConversationBufferMemory
@@ -22,10 +30,6 @@ except ImportError:
     WINSOUND_AVAILABLE = False
     logging.warning("winsound not available (non-Windows system).")
 
-# Configure logging
-logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
-logger = logging.getLogger(__name__)
-
 # Blueprint for Interview & Proctoring
 interview_bp = Blueprint('interview', __name__, url_prefix='/interview')
 
@@ -36,15 +40,15 @@ load_dotenv()
 GROQ_API_KEY = os.getenv("GROQ_API_KEY")
 if not GROQ_API_KEY:
     logger.error("GROQ_API_KEY not found in .env file")
-    raise ValueError("GROQ_API_KEY not found. Please set it in your .env file.")
 
 # Initialize Groq LLM
-try:
-    llm = ChatGroq(model_name="openai/gpt-oss-120b", groq_api_key=GROQ_API_KEY, temperature=0.7, max_tokens=200)
-    logger.info("Groq LLM initialized successfully")
-except Exception as e:
-    logger.error(f"Error initializing Groq LLM: {str(e)}", exc_info=True)
-    raise
+llm = None
+if ChatGroq and GROQ_API_KEY:
+    try:
+        llm = ChatGroq(model_name="openai/gpt-oss-120b", groq_api_key=GROQ_API_KEY, temperature=0.7, max_tokens=200)
+        logger.info("Groq LLM initialized successfully")
+    except Exception as e:
+        logger.error(f"Error initializing Groq LLM: {str(e)}", exc_info=True)
 
 # Load OpenCV Haar Cascade models
 try:

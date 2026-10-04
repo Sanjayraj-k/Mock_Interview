@@ -5,3 +5,4 @@ backend/mockvenv
 .env
 backend/.env
 Client/Interview/.env
+backend/portfolio.py

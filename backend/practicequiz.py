@@ -2,9 +2,19 @@ import os
 import tempfile
 from flask import Flask, request, jsonify
 from flask_cors import CORS
+import logging
+
+# Configure logging
+logging.basicConfig(level=logging.DEBUG)
+logger = logging.getLogger(__name__)
+
 from langchain_core.output_parsers import JsonOutputParser
 from langchain_core.prompts import ChatPromptTemplate
-from langchain_groq import ChatGroq
+try:
+    from langchain_groq import ChatGroq
+except Exception as import_err:
+    ChatGroq = None
+    logger.warning(f"Could not import ChatGroq in practicequiz.py: {import_err}")
 from langchain_community.document_loaders import PyPDFLoader
 from langchain_text_splitters import RecursiveCharacterTextSplitter
 from langchain_community.vectorstores import FAISS

@@ -196,6 +196,19 @@ def create_role():
         if not all(field in data for field in required_fields):
             return jsonify({"error": f"Missing one of required fields: {required_fields}"}), 400
 
+        assigned_students = data.get("assignedStudents", [])
+        assigned_groups = data.get("assignedGroups", [])
+
+        # Calculate actual students count (individuals + students in assigned groups)
+        all_student_ids = set(assigned_students)
+        for group_id in assigned_groups:
+            try:
+                group_students = db.students.find({"groupIds": group_id}, {"_id": 1})
+                for gs in group_students:
+                    all_student_ids.add(str(gs["_id"]))
+            except Exception:
+                pass
+
         role = {
             "hrEmail": hr_email,
             "title": data.get("title"),
@@ -205,17 +218,101 @@ def create_role():
             "maxStudents": int(data.get("maxStudents")),
             "seatsAvailable": int(data.get("seatsAvailable")),
             "package": data.get("package"),
-            "assignedStudents": data.get("assignedStudents", []),
-            "assignedGroups": data.get("assignedGroups", []),
-            "studentsCount": 0,
+            "assignedStudents": assigned_students,
+            "assignedGroups": assigned_groups,
+            "studentsCount": len(all_student_ids),
             "status": "Draft",
             "createdAt": datetime.utcnow()
         }
         result = db.roles.insert_one(role)
         role['_id'] = str(result.inserted_id)
+
+        # Update each assigned student's role field to this role title
+        if all_student_ids:
+            for sid in all_student_ids:
+                try:
+                    db.students.update_one(
+                        {"_id": ObjectId(sid)},
+                        {"$set": {"assignedRole": data.get("title")}}
+                    )
+                except Exception:
+                    pass
+
         return jsonify(role), 201
     except Exception as e:
         app.logger.error(f"Create role error: {e}")
+        return jsonify({"error": "An internal server error occurred"}), 500
+
+@app.route('/api/roles/<role_id>', methods=['PUT'])
+def update_role(role_id):
+    """Updates an existing role (e.g., assign/remove students or groups)."""
+    try:
+        data = request.get_json()
+
+        if not ObjectId.is_valid(role_id):
+            return jsonify({"error": "Invalid role ID"}), 400
+
+        # Build update fields from provided data
+        update_fields = {}
+        allowed_fields = ["title", "description", "date", "duration", "maxStudents",
+                          "seatsAvailable", "package", "assignedStudents", "assignedGroups", "status"]
+        for field in allowed_fields:
+            if field in data:
+                if field in ["maxStudents", "seatsAvailable"]:
+                    update_fields[field] = int(data[field])
+                else:
+                    update_fields[field] = data[field]
+
+        # Recalculate studentsCount if assignments changed
+        assigned_students = data.get("assignedStudents") or []
+        assigned_groups = data.get("assignedGroups") or []
+
+        if "assignedStudents" in data or "assignedGroups" in data:
+            # If not provided in this update, fetch current values from DB
+            existing_role = db.roles.find_one({"_id": ObjectId(role_id)})
+            if existing_role:
+                if "assignedStudents" not in data:
+                    assigned_students = existing_role.get("assignedStudents", [])
+                if "assignedGroups" not in data:
+                    assigned_groups = existing_role.get("assignedGroups", [])
+
+            all_student_ids = set(assigned_students)
+            for group_id in assigned_groups:
+                try:
+                    group_students = db.students.find({"groupIds": group_id}, {"_id": 1})
+                    for gs in group_students:
+                        all_student_ids.add(str(gs["_id"]))
+                except Exception:
+                    pass
+            update_fields["studentsCount"] = len(all_student_ids)
+
+            # Update assigned students' role field
+            role_title = data.get("title") or (existing_role.get("title") if existing_role else "")
+            if role_title:
+                for sid in all_student_ids:
+                    try:
+                        db.students.update_one(
+                            {"_id": ObjectId(sid)},
+                            {"$set": {"assignedRole": role_title}}
+                        )
+                    except Exception:
+                        pass
+
+        update_fields["updatedAt"] = datetime.utcnow()
+
+        result = db.roles.update_one(
+            {"_id": ObjectId(role_id)},
+            {"$set": update_fields}
+        )
+
+        if result.matched_count == 0:
+            return jsonify({"error": "Role not found"}), 404
+
+        updated_role = db.roles.find_one({"_id": ObjectId(role_id)})
+        updated_role["_id"] = str(updated_role["_id"])
+        return jsonify(updated_role), 200
+    except Exception as e:
+        app.logger.error(f"Update role error: {e}")
         return jsonify({"error": "An internal server error occurred"}), 500
 
 # --- Students Endpoints (Scoped to HR User) ---
@@ -377,24 +474,257 @@ def verify_face_embeddings():
         }), 200
     except Exception as e:
         app.logger.error(f"Verify face error: {e}")
-        return jsonify({"error": str(e)}), 500
+from groq import Groq
+
+# Groq Client setup
+groq_api_key = os.environ.get("GROQ_API_KEY")
+groq_client = Groq(api_key=groq_api_key) if groq_api_key else None
+
+def generate_groq_questions(weak_topics, count=15):
+    """
+    Dynamically generates aptitude MCQs using Groq LLaMA model.
+    Makes SEPARATE API calls per weak topic to GUARANTEE the distribution.
     
+    Example: weak_topics=["Profit and Loss", "Percentages"], count=15
+    → Call 1: 5 questions on "Profit and Loss" only
+    → Call 2: 5 questions on "Percentages" only
+    → Call 3: 5 questions on other mixed topics
+    """
+    try:
+        if not groq_client:
+            app.logger.warning("Groq client not initialized (missing GROQ_API_KEY)")
+            return None
+
+        if not weak_topics:
+            weak_topics = ["Profit and Loss", "Percentages", "Time and Work"]
+
+        system_prompt = "You are a JSON generator. Return ONLY valid raw JSON arrays. No markdown, no extra text, no code blocks."
+
+        models_to_try = [
+            "openai/gpt-oss-120b"
+        ]
+
+        def call_groq_single(prompt_text):
+            """Call Groq and return parsed questions list."""
+            for model_name in models_to_try:
+                try:
+                    completion = groq_client.chat.completions.create(
+                        model=model_name,
+                        messages=[
+                            {"role": "system", "content": system_prompt},
+                            {"role": "user", "content": prompt_text}
+                        ],
+                        temperature=0.5,
+                        max_tokens=3000
+                    )
+                    if completion and completion.choices:
+                        response_text = completion.choices[0].message.content.strip()
+                        if response_text.startswith("```"):
+                            response_text = re.sub(r'^```(?:json)?\s*', '', response_text, flags=re.MULTILINE)
+                            response_text = re.sub(r'\s*```$', '', response_text, flags=re.MULTILINE)
+                        questions = json.loads(response_text)
+                        if isinstance(questions, list) and len(questions) > 0:
+                            return questions
+                except Exception as model_err:
+                    app.logger.warning(f"Groq model {model_name} failed: {model_err}")
+                    continue
+            return None
+
+        # --- Calculate distribution (strictly cap to top 2 weak topics) ---
+        weak_topics = weak_topics[:2]
+        num_weak = len(weak_topics)
+
+        topic_counts = {}
+        if num_weak == 2:
+            topic_counts[weak_topics[0]] = 6 # 6 questions for #1 worst topic
+            topic_counts[weak_topics[1]] = 5 # 5 questions for #2 worst topic
+            other_question_total = 4          # 4 questions for other topics
+        elif num_weak == 1:
+            topic_counts[weak_topics[0]] = 10 # 10 questions for single weak topic
+            other_question_total = 5           # 5 questions for other topics
+        else:
+            other_question_total = count
+
+        app.logger.info(f"Question distribution plan: {topic_counts}, other topics: {other_question_total}")
+
+        all_questions = []
+
+        # --- Step 1: Generate questions for EACH weak topic separately ---
+        for topic, topic_count in topic_counts.items():
+            prompt = f"""Generate exactly {topic_count} aptitude multiple-choice questions ONLY on the topic: "{topic}".
+
+ALL {topic_count} questions MUST be about "{topic}" and nothing else.
+Set the "topic" field to exactly "{topic}" for every question.
+
+Each question must have 4 options (A, B, C, D).
+The correctAnswer must be the FULL option text (e.g., "A. 14.5%").
+
+Return ONLY a JSON array:
+[{{"question":"...","options":["A. ...","B. ...","C. ...","D. ..."],"correctAnswer":"A. ...","topic":"{topic}","explanation":"..."}}]"""
+
+            app.logger.info(f"Generating {topic_count} questions for weak topic: {topic}")
+            topic_questions = call_groq_single(prompt)
+
+            if topic_questions:
+                # Force-set the topic field to ensure consistency
+                for q in topic_questions:
+                    q["topic"] = topic
+                all_questions.extend(topic_questions[:topic_count])
+                app.logger.info(f"Got {len(topic_questions)} questions for '{topic}', using {min(len(topic_questions), topic_count)}")
+            else:
+                app.logger.warning(f"Failed to generate questions for weak topic: {topic}")
+
+        # --- Step 2: Generate remaining questions on OTHER topics ---
+        if other_question_total > 0:
+            other_topics_list = ["Algebra", "Ratio and Proportion", "Speed and Distance", 
+                                 "Time and Work", "Simple Interest", "Averages", "Number Series"]
+            other_topics_filtered = [t for t in other_topics_list if t not in weak_topics]
+            other_topics_str = ", ".join(other_topics_filtered[:5])
+
+            prompt = f"""Generate exactly {other_question_total} aptitude multiple-choice questions on MIXED topics.
+Choose from these topics ONLY: {other_topics_str}.
+Do NOT generate questions on: {", ".join(weak_topics)}.
+
+Each question must have 4 options (A, B, C, D).
+The correctAnswer must be the FULL option text (e.g., "A. 120").
+
+Return ONLY a JSON array:
+[{{"question":"...","options":["A. ...","B. ...","C. ...","D. ..."],"correctAnswer":"A. ...","topic":"...","explanation":"..."}}]"""
+
+            app.logger.info(f"Generating {other_question_total} questions for other topics")
+            other_questions = call_groq_single(prompt)
+
+            if other_questions:
+                all_questions.extend(other_questions[:other_question_total])
+                app.logger.info(f"Got {len(other_questions)} questions for other topics, using {min(len(other_questions), other_question_total)}")
+            else:
+                app.logger.warning("Failed to generate questions for other topics")
+
+        if not all_questions:
+            return None
+
+        # --- Step 3: Log final distribution ---
+        final_dist = {}
+        for q in all_questions:
+            t = q.get("topic", "Unknown")
+            final_dist[t] = final_dist.get(t, 0) + 1
+        app.logger.info(f"Final question distribution: {final_dist} (total: {len(all_questions)})")
+
+        # Shuffle to mix weak and other topic questions
+        import random
+        random.shuffle(all_questions)
+
+        return all_questions
+
+    except Exception as e:
+        app.logger.error(f"Error generating Groq questions: {e}")
+        return None
+
 @app.route('/api/get-random-questions', methods=['GET'])
 def get_random_questions():
-    """Fetches a random set of questions from the aptitude collection."""
+    """
+    Fetches questions for a candidate.
+    If the candidate has weak topics from previous test attempts, uses Groq LLaMA
+    to dynamically generate questions prioritizing those weak topics (e.g. Profit and Loss).
+    """
     try:
+        email = request.args.get('email', '').strip()
+        candidate_id = request.args.get('candidate_id', '').strip()
+        count = request.args.get('count', default=15, type=int)
+
+        weak_topics = []
+        has_previous_attempts = False
+        past_results_count = 0
+
+        # Look up candidate's past quiz results if email or candidate_id provided
+        if email or candidate_id:
+            query_conds = []
+            if email:
+                query_conds.append({"email": email})
+            if candidate_id:
+                query_conds.append({"candidate_id": candidate_id})
+                query_conds.append({"candidateId": candidate_id})
+
+            query = {"$or": query_conds}
+            past_results = list(db.quiz_results.find(query).sort("submittedAt", -1))
+            past_results_count = len(past_results)
+
+            if past_results:
+                has_previous_attempts = True
+                topics_loss = {}
+                # Weight recent attempt weak topics more heavily
+                for idx, res in enumerate(past_results):
+                    weight = 3 if idx == 0 else 1 # Most recent attempt has highest weight
+                    wt = res.get("weak_topics", [])
+                    for t in wt:
+                        topics_loss[t] = topics_loss.get(t, 0) + (3 * weight)
+                    tb = res.get("topic_breakdown", {})
+                    for t, info in tb.items():
+                        if isinstance(info, dict) and info.get("marks_lost", 0) > 0:
+                            topics_loss[t] = topics_loss.get(t, 0) + (info.get("marks_lost", 0) * weight)
+
+                sorted_weak = sorted(topics_loss.keys(), key=lambda k: topics_loss[k], reverse=True)
+                # Keep strictly the TOP 2 weakest topics
+                weak_topics = sorted_weak[:2]
+
+            # Check student record for cumulative weakTopics if no results found
+            if not weak_topics:
+                student = None
+                if email:
+                    student = db.students.find_one({"email": email})
+                elif candidate_id:
+                    try:
+                        student = db.students.find_one({"_id": ObjectId(candidate_id)})
+                    except Exception:
+                        pass
+
+                if student and student.get("weakTopics"):
+                    weak_topics = student.get("weakTopics")[:2]
+
+        # If student has previous attempts or weak topics, use Groq LLaMA question generator!
+        if has_previous_attempts or len(weak_topics) > 0:
+            if not weak_topics:
+                weak_topics = ["Profit and Loss", "Percentages"]
+            else:
+                weak_topics = weak_topics[:2] # Strictly top 2 weakest topics
+
+            app.logger.info(f"Generating Groq LLaMA questions for {email} with top 2 weak topics priority: {weak_topics}")
+            llm_questions = generate_groq_questions(weak_topics, count=count)
+            if llm_questions:
+                return jsonify({
+                    "is_llm_generated": True,
+                    "weak_topics": weak_topics,
+                    "attempt": past_results_count + 1,
+                    "questions": llm_questions
+                }), 200
+
+        # Fallback to database static questions (for 1st attempt or if Groq is unavailable)
         total_questions = db.aptitude.count_documents({})
         if total_questions == 0:
+            # Fallback to Groq dynamic generation with default topics if DB is empty
+            fallback_questions = generate_groq_questions(["Profit and Loss", "Percentages", "Time and Work"], count=count)
+            if fallback_questions:
+                return jsonify({
+                    "is_llm_generated": True,
+                    "weak_topics": ["Profit and Loss", "Percentages", "Time and Work"],
+                    "questions": fallback_questions
+                }), 200
             return jsonify({"error": "No questions available in the aptitude collection"}), 404
 
-        num_questions = min(request.args.get('count', default=5, type=int), total_questions)
+        num_questions = min(count, total_questions)
         pipeline = [{"$sample": {"size": num_questions}}]
         questions = list(db.aptitude.aggregate(pipeline))
 
-        for question in questions:
+        default_topics = ["Profit and Loss", "Percentages", "Time and Work", "Algebra", "Ratio and Proportion"]
+        for idx, question in enumerate(questions):
             question['_id'] = str(question['_id'])
+            if 'topic' not in question or not question['topic']:
+                question['topic'] = default_topics[idx % len(default_topics)]
 
-        return jsonify(questions), 200
+        return jsonify({
+            "is_llm_generated": False,
+            "questions": questions
+        }), 200
     except Exception as e:
         app.logger.error(f"Get random questions error: {e}")
         return jsonify({"error": "An internal server error occurred"}), 500
@@ -402,26 +732,63 @@ def get_random_questions():
 # --- New Results Endpoint ---
 @app.route('/api/submit-results', methods=['POST'])
 def submit_results():
-    """Stores quiz results for a candidate, including user details, score, percentage, and round."""
+    """Stores quiz results for a candidate, including topic breakdown and weak topics."""
     try:
         data = request.get_json()
         candidate_data = data.get("candidate")
         score = data.get("score")
         percentage = data.get("percentage")
         total_questions = data.get("total_questions")
-        round_number = data.get("round")
+        round_number = data.get("round", 1)
+        question_results = data.get("question_results", [])
 
         # Validate required fields
         required_fields = ["id", "email", "rollNo", "role", "status"]
         if not candidate_data or not all(field in candidate_data for field in required_fields):
             return jsonify({"error": "Missing required candidate data fields: id, email, rollNo, role, status"}), 400
-        if score is None or percentage is None or total_questions is None or round_number is None:
-            return jsonify({"error": "Missing required fields: score, percentage, total_questions, or round"}), 400
+        if score is None or percentage is None or total_questions is None:
+            return jsonify({"error": "Missing required fields: score, percentage, or total_questions"}), 400
+
+        # Calculate topic breakdown and top 2 weak topics
+        topic_breakdown = {}
+        weak_topics = []
+
+        if question_results:
+            for q_res in question_results:
+                topic = q_res.get("topic") or "General Aptitude"
+                is_correct = bool(q_res.get("is_correct", False))
+                if topic not in topic_breakdown:
+                    topic_breakdown[topic] = {"total": 0, "correct": 0, "marks_lost": 0}
+                topic_breakdown[topic]["total"] += 1
+                if is_correct:
+                    topic_breakdown[topic]["correct"] += 1
+                else:
+                    topic_breakdown[topic]["marks_lost"] += 1
+
+            # Identify topics where student lost marks and rank by highest marks lost / lowest accuracy
+            weak_candidates = []
+            for topic, stats in topic_breakdown.items():
+                if stats["marks_lost"] > 0:
+                    acc = stats["correct"] / stats["total"] if stats["total"] > 0 else 0
+                    weak_candidates.append({
+                        "topic": topic,
+                        "marks_lost": stats["marks_lost"],
+                        "accuracy": acc
+                    })
+
+            # Sort by marks_lost descending, accuracy ascending
+            weak_candidates.sort(key=lambda x: (-x["marks_lost"], x["accuracy"]))
+
+            # Select strictly the TOP 2 weakest topics
+            weak_topics = [item["topic"] for item in weak_candidates[:2]]
+
+        email = candidate_data["email"]
+        attempt_number = db.quiz_results.count_documents({"email": email, "round": int(round_number)}) + 1
 
         # Prepare quiz result document
         quiz_result = {
             "candidate_id": candidate_data["id"],
-            "email": candidate_data["email"],
+            "email": email,
             "rollNo": candidate_data["rollNo"],
             "role": candidate_data["role"],
             "status": candidate_data["status"],
@@ -429,12 +796,23 @@ def submit_results():
             "percentage": float(percentage),
             "total_questions": int(total_questions),
             "round": int(round_number),
+            "attempt_number": attempt_number,
+            "topic_breakdown": topic_breakdown,
+            "weak_topics": weak_topics,
+            "question_results": question_results,
             "submittedAt": datetime.utcnow()
         }
 
         # Insert into quiz_results collection
         result = db.quiz_results.insert_one(quiz_result)
         quiz_result['_id'] = str(result.inserted_id)
+
+        # Update candidate's weakTopics in db.students collection
+        if weak_topics:
+            db.students.update_one(
+                {"email": email},
+                {"$addToSet": {"weakTopics": {"$each": weak_topics}}}
+            )
 
         return jsonify({
             "message": "Quiz results stored successfully",

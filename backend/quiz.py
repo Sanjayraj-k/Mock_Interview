@@ -3,7 +3,18 @@ import tempfile
 from flask import Blueprint, request, jsonify
 from langchain_core.output_parsers import JsonOutputParser
 from langchain_core.prompts import ChatPromptTemplate
-from langchain_groq import ChatGroq
+import logging
+
+# Logger
+logger = logging.getLogger(__name__)
+if not logger.handlers:
+    logging.basicConfig(level=logging.INFO)
+
+try:
+    from langchain_groq import ChatGroq
+except Exception as import_err:
+    ChatGroq = None
+    logger.warning(f"Could not import ChatGroq in quiz.py: {import_err}")
 from langchain_community.document_loaders import PyPDFLoader
 from langchain_text_splitters import RecursiveCharacterTextSplitter
 from langchain_community.vectorstores import FAISS
@@ -13,7 +24,6 @@ from langgraph.graph import END, StateGraph
 from typing import TypedDict, List, Dict
 from urllib.parse import urlparse, parse_qs
 import re
-import logging
 from youtube_transcript_api import YouTubeTranscriptApi
 from pydub import AudioSegment
 import speech_recognition as sr
@@ -25,22 +35,19 @@ GROQ_API_KEY = os.environ.get("GROQ_API_KEY", "your-grok-api-key-here")
 # Local temp upload folder for this module
 QUIZ_UPLOAD_FOLDER = tempfile.mkdtemp()
 
-# Logger
-logger = logging.getLogger(__name__)
-if not logger.handlers:
-    logging.basicConfig(level=logging.INFO)
-
 # Initialize LLM and Embeddings
+llm = None
+embeddings = None
 try:
-    llm = ChatGroq(
-        temperature=0.2,
-        model_name="openai/gpt-oss-120b",  # Use a known working model
-        groq_api_key=GROQ_API_KEY
-    )
+    if ChatGroq:
+        llm = ChatGroq(
+            temperature=0.2,
+            model_name="openai/gpt-oss-120b",  # Use a known working model
+            groq_api_key=GROQ_API_KEY
+        )
     embeddings = HuggingFaceEmbeddings(model_name="sentence-transformers/all-MiniLM-L6-v2")
 except Exception as e:
     logger.error(f"Initialization failed: {str(e)}")
-    raise
 
 class GraphState(TypedDict):
     retriever: MultiQueryRetriever
