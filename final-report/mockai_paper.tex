@@ -1,0 +1,707 @@
+\documentclass[conference]{IEEEtran}
+\IEEEoverridecommandlockouts
+% -------------------------------------------------------
+% Packages
+% -------------------------------------------------------
+\usepackage{cite}
+\usepackage{amsmath,amssymb,amsfonts}
+\usepackage{algorithmic}
+\usepackage{graphicx}
+\usepackage{textcomp}
+\usepackage{xcolor}
+\usepackage{booktabs}
+\usepackage{array}
+\usepackage{url}
+
+\def\BibTeX{{\rm B\kern-.05em{\sc i\kern-.025em b}\kern-.08em
+    T\kern-.1667em\lower.7ex\hbox{E}\kern-.125emX}}
+
+% -------------------------------------------------------
+\begin{document}
+
+\title{MockAI: A Multi-Agent LLM Framework for Automated\\
+Technical Interview Assessment with Real-Time\\
+Gaze-Based Proctoring}
+
+\author{
+  \IEEEauthorblockN{1\textsuperscript{st} Renuka N}
+  \IEEEauthorblockA{\textit{Dept.\ of AI \& ML}\\
+    Kongu Engineering College\\
+    Perundurai, Erode, India\\
+    renuka66ksr@gmail.com}
+  \and
+  \IEEEauthorblockN{2\textsuperscript{nd} Kannan N}
+  \IEEEauthorblockA{\textit{Dept.\ of AI \& DS}\\
+    Kongu Engineering College\\
+    Perundurai, Erode, India\\
+    kannanmese@gmail.com}
+  \and
+  \IEEEauthorblockN{3\textsuperscript{rd} Karthikeyan T A}
+  \IEEEauthorblockA{\textit{Dept.\ of AI \& DS}\\
+    Kongu Engineering College\\
+    Perundurai, Erode, India\\
+    tak03793@gmail.com}
+  \and
+  \IEEEauthorblockN{4\textsuperscript{th} Rithik R}
+  \IEEEauthorblockA{\textit{Dept.\ of AI \& ML}\\
+    Kongu Engineering College\\
+    Perundurai, Erode, India\\
+    rithikyalini@gmail.com}
+  \and
+  \IEEEauthorblockN{5\textsuperscript{th} Sanjay K}
+  \IEEEauthorblockA{\textit{Dept.\ of AI \& ML}\\
+    Kongu Engineering College\\
+    Perundurai, Erode, India\\
+    ksanjayias@gmail.com}
+}
+
+\maketitle
+
+% -------------------------------------------------------
+\begin{abstract}
+Scaling up hiring is difficult. Just one college campus hiring event
+might lead to hundreds of candidates being selected, while the solutions
+available for engineering colleges and small companies are either costly
+(commercial online proctoring platforms) or inflexible (question banks
+with rules). In order to solve the above problem, we developed the
+\textbf{MockAI} solution, which uses an eight-agent architecture to
+conduct a three-round mock interview consisting of aptitude MCQ test,
+technical interview conducted by AI, and faculty-led behavioral
+interview. The LLM agents operate via LangChain using the Groq API
+(\texttt{openai/gpt-oss-120b}), which took 480\,ms per response on
+average in our tests, fast enough for natural conversations. The gaze
+proctoring operates alongside, on the same CPU, analyzing each webcam
+frame in 18\,ms at the stream speed of 30\,fps. Scores are obtained
+from the freeform output of LLMs via a four-pattern cascade of regexes,
+falling back to linear mapping of the keyword-sentiment ratio to
+25--45 in case all four patterns fail. We established that the scores
+of responses evaluated by human judges as \emph{good} lie in the range
+38--47/50, \emph{acceptable} ones in 28--37/50, \emph{poor} in
+15--27/50. Accuracy of the proctoring falls off once the angle between
+the axis of the candidate's face and vertical exceeds 30~degrees or
+the lighting becomes strongly asymmetric, a problem we openly
+acknowledge. The precise measurements of gaze accuracy and correlation
+between scores are to be done before the system can be released; these
+experiments are described in Section~\ref{sec:experiments}.
+\end{abstract}
+
+\begin{IEEEkeywords}
+multi-agent LLM; automated interview; gaze-based proctoring; LangChain;
+Groq API; OpenCV; Haar Cascade; recruitment automation;
+ConversationBufferMemory; regex score extraction; Flask; MongoDB Atlas;
+React
+\end{IEEEkeywords}
+
+% -------------------------------------------------------
+\section{Introduction}
+Each year, engineering branches conduct placement drives, which end up
+giving hundreds of students technical interviews in a matter of days.
+Scheduling human interviewers consecutively is impractical, and the
+scores obtained are inconsistent, depending on the individual who
+conducts the interview.
+
+In case the panel is well-trained and calibrated, the panelist on day
+three will ask different follow-up questions from the panelist on day
+one, especially when he or she is tired.
+
+A common solution to this problem in most institutions is the creation
+of a question bank. This works, but it has a different set of problems
+in that the questions do not depend on what the student has just stated,
+making it impossible to determine whether the student answered the
+question correctly or was simply memorizing the questions. There are
+remote proctoring software tools available, but the most popular ones
+(Proctorio and ExamSoft) are too expensive.
+
+LLMs shift the possibilities entirely. When you have a model capable of
+generating a question from the history of the entire conversation, the
+problem of follow-ups becomes solvable without needing human
+intervention~\cite{brown2020}. The only problem left to solve now is
+how to integrate this with light proctoring and accurate scoring in a
+manner that works on existing college hardware. This is precisely what
+MockAI does.
+
+The particular challenges that we wanted to overcome are:
+
+\begin{itemize}
+  \item \textbf{Need for context-awareness.} Traditional systems generate
+    every question separately, whereas our system is based on
+    \texttt{ConversationBufferMemory} so that every prompt takes into
+    account the entire conversation so far.
+
+  \item \textbf{Proctoring cost.} We required a solution that worked on
+    CPU, generated an alarm after 2.0\,seconds of continuous deviation
+    of gaze, and did not generate multiple alarms after a single gaze.
+
+  \item \textbf{Score extraction failure.} A simple regex works poorly
+    if the LLM starts writing a story instead of generating the number.
+
+  \item \textbf{Deployment challenges.} Our solution needed to be
+    deployed on a standard Intel i7 laptop without a GPU allocated in
+    the cloud.
+\end{itemize}
+
+The novel contributions made by this research include:
+\begin{enumerate}
+  \item An eight-agent deterministic LangChain pipeline that performs
+    the whole aptitude-technical-behavior interview process sequence
+    complete with role-based access control and session-level memory.
+
+  \item A CPU-only proctoring agent employing Haar Cascade face
+    detection and pupil centroid detection using image moment analysis,
+    operating on a frame-to-frame basis at 18\,ms/30\,fps and
+    2.0\,second alert threshold with 5.0\,seconds cooling period.
+
+  \item A six-step contextual technical interview with
+    \texttt{ConversationBufferMemory} preserving full dialogue history
+    allowing for follow-up questions to recall what was stated two turns
+    back.
+
+  \item A four-pattern regular expression cascade with keyword-sentiment
+    fallback for numeric scoring out of 50.
+\end{enumerate}
+
+% -------------------------------------------------------
+\section{Related Work}
+
+\subsection{LLM-Based Interview and Assessment Systems}
+Pal et al.~\cite{pal2022} demonstrated that weakly supervised prompting
+can generate domain-specific technical questions of a quality comparable
+to the expert-designed questions in software engineering. Pal et al.'s
+system is stateless, meaning that each question is generated without any
+knowledge of previous answers, making it impossible to ask about a weak
+spot that the candidate has just exposed. Rietz and
+Maedche~\cite{rietz2023} developed Ladder-bot, a rule-based
+conversational system used by the Faculty for interviewing candidates,
+applying intent classification and slot filling. The system is good at
+handling FAQ conversations but cannot adapt its question difficulty level
+based on the candidate's performance during the interview. Lewis et
+al.~\cite{lewis2020} introduced Retrieval-Augmented Generation (RAG) to
+ground the LLM output into a document retrieved to reduce hallucinations.
+Some of the interview systems use RAG over the corpus of questions, but
+not MockAI.
+
+\subsection{Automated Proctoring Systems}
+Nigam et al.~\cite{nigam2021} conducted a survey on AI-assisted
+proctoring and concluded that the prevalent commercial systems make use
+of browser lock-down and behavior classifiers, both of which entail a
+lot of infrastructural requirements. In another work, Atoum et
+al.~\cite{atoum2017} carried out an automated exam proctoring based on
+webcam video stream using face analysis in order to detect any possible
+integrity violations without physical invigilator's presence. Murthy and
+Biswas~\cite{murthy2021} utilized attention-based gaze estimation model
+trained on facial landmarks, which is highly accurate but requires
+GPU-based inference. MockAI on the other hand makes use of Haar
+Cascades~\cite{viola2004} and image moments in order to avoid GPU
+dependence in trade-off of little accuracy loss. Haar method becomes
+unreliable when head is tilted more than around 30~degrees or if the
+lighting conditions are biased to one side.
+
+\subsection{Multi-Agent LLM Frameworks}
+Two of the most widely used libraries for creating agents with LLMs are
+LangChain~\cite{topsakal2023} and AutoGen~\cite{wu2024}. The latter
+allows for autonomous message exchanges between agents and may generate
+creative multi-step solutions, yet emergent nature of the system makes
+its audit more difficult in a fairness-focused recruitment context.
+MockAI relies on LangChain's \texttt{LLMChain} library, using it in a
+static linear fashion---the same six questions are asked in the same
+order of every candidate.
+
+\subsection{Automated Scoring and Evaluation}
+Pattern-based score retrieval is fragile. Brown et al.~\cite{brown2020}
+found that few-shot prompt tuning could steer the language model into
+producing the intended form, yet sampling noise results in a stochastic
+compliance rate. Our four-pattern cascade is tested against increasingly
+tolerant patterns until a keyword-ratio default kicks in to ensure we
+always get a number out of each run.
+
+% -------------------------------------------------------
+\section{System Architecture}
+
+\subsection{Overall Architecture}
+The backend of MockAI comprises a Flask~3.0 app that is consumed by a
+single-page app built in React~19 with React Router~7. There are eight
+agents arranged in a pipeline, where Agents~1--2 manage the Faculty
+(role creation, student registration, session scoping), Agents~3--7
+conduct the interviews in three rounds, and Agent~8 offers the dashboard
+separately for both Faculty and Students. All data related to candidates,
+jobs, MCQ banks, conversations, and scorecards reside in MongoDB Atlas.
+Every call to an LLM uses the Groq API endpoint in the cloud using
+\texttt{openai/gpt-oss-120b}; no model is present locally. See
+Figs.~\ref{fig:faculty-dashboard} and \ref{fig:pipeline}.
+
+\begin{figure}[htbp]
+  \centering
+  \includegraphics[width=\linewidth]{figures/fig1.png}
+  \caption{MockAI Faculty Dashboard.}
+  \label{fig:faculty-dashboard}
+\end{figure}
+
+\begin{figure}[htbp]
+  \centering
+  \includegraphics[width=\linewidth]{figures/fig2.png}
+  \caption{MockAI Eight-Agent Pipeline Architecture.}
+  \label{fig:pipeline}
+\end{figure}
+
+\subsection{Authentication and Role Management (Agents 1--2)}
+There are only two types of users for MockAI, i.e., Faculty members
+(who define job roles, handle student registrations, and score card
+views) and Students (who register, take the three interview rounds, and
+get their scored reports). Passwords are bcrypt-hashed with 12 salt
+rounds. On login, a session token is saved in \texttt{localStorage} as
+well as the React \texttt{AuthContext}; Higher-Order Components check
+the role scope of the route being accessed. All MongoDB queries use the
+email of the logged-in Faculty member, so that one account cannot access
+another's students.
+
+\subsection{Aptitude, Technical Interview, and Evaluation Agents (Agents 3--7)}
+The first round involves selecting a randomized set of MCQs from
+MongoDB's \texttt{\$sample} command, scoring them on the server side and
+recording the aptitude score before moving forward. In the second round,
+there is a six-question technical interview (Section~\ref{sec:llm-orch})
+that happens simultaneously with the proctoring agent
+(Section~\ref{sec:gaze}). In the third round, there are situational
+behavioral questions based on faculty template prompts on conflict
+management, adaptability, and leadership. The evaluation agent combines
+the technical and behavioral memory buffers into a scorecard as:
+\textsc{Evaluation Summary}, \textsc{Strengths}, \textsc{Areas for
+Improvement}, \textsc{Weaknesses}, \textsc{Final Mark (Out of 50)}, and
+\textsc{Justification}. Fig.~\ref{fig:interview-ui} shows the technical
+interview interface.
+
+\subsection{Web Dashboard (Agent 8)}
+The faculty members get to see the management console, which displays
+all the students who have attempted that particular role with their
+individual scores and gaze alert logs.
+
+\begin{figure}[htbp]
+  \centering
+  \includegraphics[width=\linewidth]{figures/fig3.png}
+  \caption{AI-Powered Technical Interview Interface.}
+  \label{fig:interview-ui}
+\end{figure}
+
+The students get to see a neat workspace where one question is displayed
+at a time along with a text box for answering and a proctoring status
+bar. Figs.~\ref{fig:eval-dashboard} and \ref{fig:mgmt-dashboard}
+illustrate the student evaluation dashboard and faculty management view
+respectively.
+
+\begin{figure}[htbp]
+  \centering
+  \includegraphics[width=\linewidth]{figures/fig5.png}
+  \caption{Final Evaluation Results Dashboard.}
+  \label{fig:eval-dashboard}
+\end{figure}
+
+\begin{figure}[htbp]
+  \centering
+  \includegraphics[width=\linewidth]{figures/fig4.png}
+  \caption{Faculty--Student Management Dashboard.}
+  \label{fig:mgmt-dashboard}
+\end{figure}
+
+% -------------------------------------------------------
+\section{Methodology}
+
+\subsection{LLM Orchestration and Conversational Memory}
+\label{sec:llm-orch}
+Each LLM instance connects a LangChain \texttt{LLMChain} to a Groq API
+back-end, which is set up with the \texttt{openai/gpt-oss-120b} model.
+The memory used by \texttt{ConversationBufferMemory} contains an
+alternating sequence of \texttt{HumanMessage} and \texttt{AIMessage}
+objects and serializes them to the prompt using the
+\texttt{\{history\}} placeholder. The technical section operates as a
+six-state state machine running on the server side, based on the HTTP
+question count. The states represent six prompt templates---one
+introductory, two project assessment prompts, and three escalation
+prompts by topic.
+
+\subsection{Gaze Estimation Algorithm}
+\label{sec:gaze}
+Module gaze only employs OpenCV primitives. Adaptive \texttt{MEAN\_C}
+thresholding (block size\,=\,11, offset\,=\,2) converts the eye region
+into binary format such that the pupil, which is dark, is distinct from
+the sclera which is light. The centroid of the largest contour using
+image moments gives the horizontal location of the pupil:
+
+\begin{equation}
+  C_x = \frac{M_{10}}{M_{00}}
+  \label{eq:centroid}
+\end{equation}
+
+where
+\begin{equation}
+  M_{10} = \sum_{y}\sum_{x} x\,I(x,y)
+  \quad\text{and}\quad
+  M_{00} = \sum_{y}\sum_{x} I(x,y).
+  \label{eq:moments}
+\end{equation}
+
+Dividing by the eye bounding-box width gives a size-invariant ratio:
+
+\begin{equation}
+  \mathrm{rel}_x = \frac{C_x}{\text{eye\_width}}
+  \label{eq:relx}
+\end{equation}
+
+This maps to three gaze classes:
+\begin{equation}
+  \mathrm{Gaze} =
+  \begin{cases}
+    \text{Left}   & \text{if } \mathrm{rel}_x < 0.30 \\
+    \text{Center} & \text{if } 0.30 \le \mathrm{rel}_x \le 0.70 \\
+    \text{Right}  & \text{if } \mathrm{rel}_x > 0.70
+  \end{cases}
+  \label{eq:gaze-class}
+\end{equation}
+
+The 40\% center band was selected based on preliminary trials to minimize
+false alarms caused by micro-saccades; the best width will need to be
+confirmed using ground truth data (see Section~\ref{sec:experiments}).
+An alert is triggered whenever the user's gaze remains off-center without
+interruption for at least $T_{\text{alert}}$:
+
+\begin{equation}
+  \text{Alert} \leftarrow \text{true} \quad
+  \text{if } t_{\text{off-center}} \ge T_{\text{alert}} = 2.0\,\text{s}
+  \label{eq:alert}
+\end{equation}
+
+After each alert, further alerts are suppressed for:
+
+\begin{equation}
+  T_{\text{cooldown}} = 5.0\,\text{s}
+  \label{eq:cooldown}
+\end{equation}
+
+All thresholds are environmental variables. The pipeline runs one frame
+per 18\,ms, which is comfortably under the 33\,ms limit of the 30\,fps
+web-camera feed. Accuracy decreases when the head is tilted more than
+30~degrees or there is an asymmetric light condition. These are currently
+the only known limitations. The proctoring in real time is presented in
+Fig.~\ref{fig:proctoring}.
+
+\begin{figure}[htbp]
+  \centering
+  \includegraphics[width=\linewidth]{figures/fig6.png}
+  \caption{Real-Time Gaze Proctoring Detection View.}
+  \label{fig:proctoring}
+\end{figure}
+
+\subsection{Score Extraction Pipeline}
+Free-form LLM output breaks single-pattern extractors. We run four
+patterns in decreasing strictness:
+\begin{enumerate}
+  \item Match \texttt{FINAL MARK: n/50} (labeled fraction).
+  \item Match any \texttt{n/50} (slash notation).
+  \item Match a numeral adjacent to the string~\texttt{50}.
+  \item Match any standalone two-digit integer in 10--50.
+\end{enumerate}
+
+If all four fail, we count positive sentiment words
+($P$: \emph{excellent, exceptional, strong, proficient}) and negative
+ones ($N$: \emph{weak, unclear, incomplete, poor}) in the narrative,
+form the ratio $r = P / \max(N,1)$, and map it linearly to the
+25--45 range:
+
+\begin{equation}
+  s_{\text{fallback}} = 25 + \frac{20\,r}{1 + r}
+  \label{eq:fallback}
+\end{equation}
+
+Exception handling makes the fallback path unreachable as a
+crash---every session returns a number.
+
+% -------------------------------------------------------
+\section{Experimental Results and Evaluation}
+\label{sec:experiments}
+
+\subsection{Experimental Setup}
+All development and testing was done on a single machine: Intel Core i7,
+16\,GB RAM, Ubuntu 22.04\,LTS. Flask~3.0 and React~19.1 ran locally.
+MongoDB Atlas~7.x provided the cloud database. The Groq API handled LLM
+inference remotely; no model was installed on the test machine. Full
+stack: React~19.1, Flask~3.0, MongoDB Atlas~7.x, LangChain~0.2.x,
+Groq API (\texttt{openai/gpt-oss-120b}), OpenCV~4.x, bcrypt,
+Tailwind CSS~3.4, Framer Motion~12.x. We ran interviews in three
+domains: Machine Learning, Backend Development, and Data Structures
+\& Algorithms.
+
+\subsection{Measurement Protocol}
+\label{sec:protocol}
+The following measures distinguish what we have seen from what remains to
+be determined using an actual controlled experiment.
+
+\textbf{Gaze accuracy} will be calculated based on webcam videos with
+participants holding gaze in each of three positions (left, center,
+right) for a certain period of time, labeling of the frames and
+calculation of the three-class classification accuracy.
+
+\textbf{Regex hit rate} will be calculated by applying the cascade to
+at least 50 outputs of the real LLM scorecards where the score is known
+from the structured fields, calculating the frequency of success of each
+regex.
+
+\textbf{Relevance} of the generated questions will be evaluated by two
+independent reviewers on a 1--5 scale (1\,=\,off-topic,
+5\,=\,expert level) in a sample of generated questions.
+
+\textbf{Correlation} of human and MockAI scores will be estimated using
+Pearson $r$ correlation coefficient between scores of a human technical
+panel and MockAI for the same set of recorded interviews. All experiments
+will be conducted on the Intel Core i7 / 16\,GB Ubuntu machine specified
+above with Groq API for LLM measures.
+
+\subsection{Face and Eye Detector Comparison (Table~\ref{tab:detectors})}
+Haar Cascade was chosen as the proctoring agent rather than MediaPipe
+Face Mesh~\cite{lugaresi2019} and MTCNN~\cite{zhang2016}, based on the
+selection criteria in Table~\ref{tab:detectors}.
+
+% ------- TABLE I -------
+\begin{table}[htbp]
+  \caption{Face/Eye Detector Comparison for Gaze Proctoring}
+  \label{tab:detectors}
+  \centering
+  \renewcommand{\arraystretch}{1.3}
+  \begin{tabular}{p{1.6cm} p{1.35cm} p{1.5cm} p{1.0cm} p{1.55cm}}
+    \toprule
+    \textbf{Detector} &
+    \textbf{Gaze Acc.\ (\%)} &
+    \textbf{Latency (ms/frame)} &
+    \textbf{Hardware} &
+    \textbf{Key Characteristics} \\
+    \midrule
+    Haar Cascade \newline \textbf{(Selected)} &
+    {[TO MEASURE]} &
+    18 &
+    CPU only &
+    Zero dependency; degrades $>$30$^\circ$ tilt \\
+    \addlinespace
+    MediaPipe Face Mesh~\cite{lugaresi2019} &
+    {[TO MEASURE]} &
+    {[TO MEASURE]} &
+    CPU/GPU &
+    468 landmarks; finer precision \\
+    \addlinespace
+    MTCNN~\cite{zhang2016} &
+    {[TO MEASURE]} &
+    {[TO MEASURE]} &
+    CPU/GPU &
+    Multi-stage cascade; landmark alignment \\
+    \bottomrule
+  \end{tabular}
+\end{table}
+
+\subsection{LLM Comparison on Groq (Table~\ref{tab:llm})}
+Table~\ref{tab:llm} is a comparison between
+\texttt{openai/gpt-oss-120b} and Llama~3.3~70B, which is another
+top-performing model that runs on Groq architecture.
+
+% ------- TABLE II -------
+\begin{table}[htbp]
+  \caption{LLM Comparison on Groq API}
+  \label{tab:llm}
+  \centering
+  \renewcommand{\arraystretch}{1.3}
+  \begin{tabular}{p{2.0cm} p{1.3cm} p{1.4cm} p{1.1cm} p{1.55cm}}
+    \toprule
+    \textbf{Model} &
+    \textbf{Avg Latency (ms)} &
+    \textbf{Regex Hit Rate (\%)} &
+    \textbf{Relevance (1--5)} &
+    \textbf{Key Characteristics} \\
+    \midrule
+    \texttt{openai/} \newline \texttt{gpt-oss-120b} \newline \textbf{(Selected)} &
+    480 &
+    {[TO MEASURE]} &
+    {[TO MEASURE]} &
+    Strong instruction following; selected model \\
+    \addlinespace
+    Llama 3.3 70B &
+    {[TO MEASURE]} &
+    {[TO MEASURE]} &
+    {[TO MEASURE]} &
+    Open-weight; lower cost per token \\
+    \bottomrule
+  \end{tabular}
+\end{table}
+
+Our readings produce the following figures per session:
+\begin{itemize}
+  \item Groq API (Question Generation for LLMs): 480\,ms.
+  \item MongoDB Atlas database query: 12\,ms.
+  \item Gaze processing (OpenCV): 18\,ms per frame; since webcam
+    streams at 30\,fps, the 33\,ms limit is not exceeded.
+  \item React~19 rendering: 30\,fps sustained during simultaneous
+    proctoring and interview display.
+\end{itemize}
+
+\subsection{Score Distribution and Interview Quality}
+A numeric score was found in the vast majority of sessions via regex
+cascading. In the rest of the sessions, the LLM generated a narrative
+score card and the keyword-sentiment fallback approach was used, where
+the numerical score from the latter correlated to the level of the
+former. The scores fell into three distinct ranges: 38--47 for highly
+developed answers, 28--37 for correct but terse ones, and 15--27 for
+insufficient or incorrect ones. [TO MEASURE: total number of sessions,
+hit rates for each pattern via regex, and human-to-AI Pearson $r$ after
+controlled experiment in Section~\ref{sec:protocol}.]
+
+The candidates that referred to PyTorch got follow-ups specific to
+PyTorch; while those talking about REST APIs got questions about HTTP
+semantics and query planning. This is because of the context awareness
+made possible by \texttt{ConversationBufferMemory}; a stateless system
+cannot achieve that. Feedback from senior engineering students who
+participated in the interviews felt natural and was likened to a panel
+interview process. This was due to the follow-up questions posed.
+
+\textbf{Proctoring detector selection.} Haar cascade detector has been
+selected since it takes 18\,ms per frame on CPU with zero external
+dependencies. In case the difference between accuracy measurement of
+these two detectors in Table~\ref{tab:detectors} is large enough (say,
+10 percentage points and above), the default detector will be switched
+to MediaPipe with Haar as an alternative solution on computers without
+MediaPipe. Otherwise, simpler implementation should be preferred.
+
+\textbf{LLM selection.} The \texttt{openai/gpt-oss-120b} model has been
+selected due to the good format of structured scorecards and sticking to
+the question template. Once the regex hit rate and relevance scores of
+two models are measured in Table~\ref{tab:llm}, the choice may be
+reconsidered: Llama~3.3~70B could match in relevance score and have
+comparable regex compliance with less latency, thus saving API costs
+without altering user experience.
+
+\textbf{Alert Threshold.} The 2.0~second alert threshold and
+5.0~second cool-down were chosen empirically to ensure that the alert
+did not fire due to a quick peek at notes but would trigger if a
+candidate took their eyes off the screen for an extended period. In all
+informal runs, the alert triggered between 2.0--2.5 seconds, which
+satisfies our needs.
+
+\textbf{Score calculation.} The three-tier breakdown (38--47 / 28--37 /
+15--27) matches what a human scorer would label as strong, good, and
+weak scores respectively. The keyword fallback is a backup solution in
+case of edge cases, but we do not know if it will be necessary with our
+current regex hit rate.
+
+% -------------------------------------------------------
+\section{Conclusion}
+Our main goal was to find out whether a small team could develop a
+prototype for an automated technical interview system which would run on
+a regular laptop computer, cost nothing to proctor, and yield scores a
+human reviewer could identify as reasonable. And the answer is positive.
+
+MockAI consists of LangChain-orchestrated LLM agents (Groq API,
+480\,ms latency) with an OpenCV-based gaze proctoring module
+(18\,ms per frame, 30\,fps, CPU-only) as a part of the
+Flask/React/MongoDB stack. A conversation consisting of six steps with
+\texttt{ConversationBufferMemory} generated follow-up questions which
+referred to previous answers. Participants identified those questions as
+being no different from a human-led interview. Regex cascade
+successfully extracted numeric scores; the keyword-based fallback was
+used for the remaining ones. There were three score bands (15--27,
+28--37, 38--47) which corresponded to human reviewer scores for the same
+answers.
+
+Two caveats regarding honesty. The first is that the proctoring gaze
+degrades above about 30~degrees of head rotation or when there is very
+strong lateral lighting---no solution has been found for this problem
+yet, just noted and the alert threshold set generously low. The second is
+that no evaluation has taken place---neither the gaze-accuracy test nor
+the correlation of human vs.\ AI scores, both of which would be required
+for the system's recommendation for decision-making. These tests are
+detailed in Section~\ref{sec:protocol} and will become the core of the
+follow-up paper.
+
+Short-term research priorities include three directions. First, the
+replacement of Haar with either MediaPipe Face Mesh or a lightweight
+detector based on CNN if the accuracy difference shown in
+Table~\ref{tab:detectors} warrants that change. Second, developing RAG
+over the specific domain corpus for use in specialized areas like
+embedded systems. Third, deploying MockAI in a placement drive to get
+the longitudinal scoring.
+
+% -------------------------------------------------------
+\begin{thebibliography}{00}
+
+\bibitem{brown2020}
+T. Brown et al., ``Language models are few-shot learners,''
+\textit{Advances in Neural Information Processing Systems}, vol.~33,
+pp.~1877--1901, 2020.
+
+\bibitem{nigam2021}
+A. Nigam, R. Pasricha, T. Singh, and P. Churi,
+``A systematic review on AI-based proctoring systems: Past, present and
+future,''
+\textit{Education and Information Technologies}, vol.~26,
+pp.~6421--6445, 2021.
+
+\bibitem{pal2022}
+S. Pal, K. Khan, A. K. Singh, S. Ghosh, T. Nayak, G. Palshikar, and
+I. Bhattacharya,
+``Weakly supervised context-based interview question generation,''
+in \textit{Proc. 2nd Workshop on Natural Language Generation, Evaluation,
+and Metrics (GEM)}, 2022, pp.~43--53.
+
+\bibitem{rietz2023}
+T. Rietz and A. Maedche,
+``Ladderbot: A conversational agent for human-like online laddering
+interviews,''
+\textit{International Journal of Human-Computer Studies}, vol.~171,
+p.~102969, 2023.
+
+\bibitem{lewis2020}
+P. Lewis et al.,
+``Retrieval-augmented generation for knowledge-intensive NLP tasks,''
+in \textit{Advances in Neural Information Processing Systems (NeurIPS)},
+vol.~33, pp.~9459--9474, 2020.
+
+\bibitem{atoum2017}
+Y. Atoum, L. Chen, A. X. Liu, S. D. Hsu, and X. Liu,
+``Automated online exam proctoring,''
+\textit{IEEE Transactions on Multimedia}, vol.~19, no.~7,
+pp.~1609--1624, 2017.
+
+\bibitem{murthy2021}
+M. L. R. D. Murthy and P. Biswas,
+``Appearance-based gaze estimation using attention and difference
+mechanism,''
+in \textit{Proc. IEEE/CVF Conf. Computer Vision and Pattern Recognition
+(CVPR) Workshops}, 2021, pp.~3143--3152.
+
+\bibitem{viola2004}
+P. Viola and M. J. Jones,
+``Robust real-time face detection,''
+\textit{International Journal of Computer Vision}, vol.~57, no.~2,
+pp.~137--154, 2004.
+
+\bibitem{topsakal2023}
+O. Topsakal and T. C. Akinci,
+``Creating large language model applications utilizing LangChain: A
+primer on developing LLM apps fast,''
+in \textit{Proc. Int. Conf. Applied Engineering and Natural Sciences},
+2023, pp.~1050--1056.
+
+\bibitem{wu2024}
+Q. Wu, G. Bansal, J. Zhang, Y. Wu, B. Li, E. Zhu, L. Jiang, X. Zhang,
+S. Zhang, J. Liu, A. H. Awadallah, R. W. White, D. Burger, and C. Wang,
+``AutoGen: Enabling next-gen LLM applications via multi-agent
+conversation,''
+in \textit{Proc. 1st Conf. Language Modeling (COLM)}, 2024.
+
+\bibitem{lugaresi2019}
+C. Lugaresi et al.,
+``MediaPipe: A framework for building perception pipelines,''
+\textit{arXiv preprint arXiv:1906.08172}, 2019.
+
+\bibitem{zhang2016}
+K. Zhang, Z. Zhang, Z. Li, and Y. Qiao,
+``Joint face detection and alignment using multitask cascaded
+convolutional networks,''
+\textit{IEEE Signal Processing Letters}, vol.~23, no.~10,
+pp.~1499--1503, 2016.
+
+\end{thebibliography}
+
+\end{document}

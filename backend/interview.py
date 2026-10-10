@@ -62,6 +62,57 @@ except Exception as e:
     face_cascade = None
     eye_cascade = None
 
+import threading
+
+# Load Object / Gadget Detection Model (SSDLite MobileNetV3)
+gadget_model = None
+gadget_categories = []
+
+try:
+    import torch
+    import torchvision
+    from torchvision.models.detection import ssdlite320_mobilenet_v3_large, SSDLite320_MobileNet_V3_Large_Weights
+
+    weights = SSDLite320_MobileNet_V3_Large_Weights.DEFAULT
+    gadget_categories = weights.meta.get("categories", [])
+    gadget_model = ssdlite320_mobilenet_v3_large(weights=weights).eval()
+    logger.info("SSDLite MobileNetV3 gadget detector loaded successfully.")
+except Exception as e:
+    logger.warning(f"Could not load SSDLite gadget detector: {e}")
+    gadget_model = None
+
+PROHIBITED_CLASSES = {
+    "cell phone": "Mobile Phone",
+    "remote": "Remote Device",
+    "book": "Book / Notes Material"
+}
+
+def detect_gadgets(frame):
+    """Detects unauthorized gadgets (phones, remotes, books) in frame."""
+    if gadget_model is None or frame is None or frame.size == 0:
+        return False, "", 0.0
+
+    try:
+        rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+        resized = cv2.resize(rgb, (320, 320))
+        tensor = torch.from_numpy(resized).permute(2, 0, 1).unsqueeze(0).float() / 255.0
+
+        with torch.no_grad():
+            preds = gadget_model(tensor)[0]
+
+        labels = preds["labels"].tolist()
+        scores = preds["scores"].tolist()
+
+        for label, score in zip(labels, scores):
+            if score >= 0.40 and label < len(gadget_categories):
+                cat_name = gadget_categories[label]
+                if cat_name in PROHIBITED_CLASSES:
+                    return True, PROHIBITED_CLASSES[cat_name], round(score, 2)
+    except Exception as e:
+        logger.error(f"Error in detect_gadgets: {e}")
+
+    return False, "", 0.0
+
 # === QUESTION GENERATION & EVALUATION ===
 memory_store = {}
 
@@ -253,11 +304,17 @@ def _generate_evaluation_and_cleanup(memory):
 
 # === PROCTORING SECTION ===
 exam_states = {}
-ALERT_THRESHOLD_SECONDS, ALERT_COOLDOWN_SECONDS, LONG_BLINK_SECONDS, MAX_WARNINGS = 2.0, 5.0, 1.5, 3
+ALERT_THRESHOLD_SECONDS, ALERT_COOLDOWN_SECONDS, LONG_BLINK_SECONDS, MAX_WARNINGS = 2.0, 4.0, 1.5, 3
 
-def get_exam_state():
-    session_id = session.get('session_id', str(uuid4()))
-    session['session_id'] = session_id
+def get_exam_state(session_id=None):
+    if not session_id:
+        try:
+            session_id = request.headers.get("X-Session-ID") or session.get('session_id')
+        except Exception:
+            session_id = None
+    if not session_id:
+        session_id = "default_exam_session"
+
     if session_id not in exam_states:
         exam_states[session_id] = {
             "is_looking_away": False,
@@ -267,37 +324,51 @@ def get_exam_state():
             "warnings": 0,
             "long_blink_count": 0,
             "last_alert_time": 0,
-            "violation_detected": False
+            "violation_detected": False,
+            "last_violation_reason": "",
+            "last_gadget_check_time": 0,
+            "last_gadget_detected": False,
+            "last_gadget_name": ""
         }
     return exam_states[session_id]
 
-def reset_exam_state():
-    session_id = session.get('session_id')
-    if session_id and session_id in exam_states:
-        exam_states[session_id] = {
-            "is_looking_away": False,
-            "away_start_time": 0,
-            "is_eyes_closed": False,
-            "eyes_closed_start_time": 0,
-            "warnings": 0,
-            "long_blink_count": 0,
-            "last_alert_time": 0,
-            "violation_detected": False
-        }
-        logger.info("Exam state reset")
+def reset_exam_state(session_id=None):
+    state = get_exam_state(session_id)
+    state.update({
+        "is_looking_away": False,
+        "away_start_time": 0,
+        "is_eyes_closed": False,
+        "eyes_closed_start_time": 0,
+        "warnings": 0,
+        "long_blink_count": 0,
+        "last_alert_time": 0,
+        "violation_detected": False,
+        "last_violation_reason": "",
+        "last_gadget_check_time": 0,
+        "last_gadget_detected": False,
+        "last_gadget_name": ""
+    })
+    logger.info(f"Exam state reset for session {session_id}")
 
 def play_alert():
-    if WINSOUND_AVAILABLE:
+    """Plays warning alert sound asynchronously so Flask thread is never blocked."""
+    def _beep():
         try:
-            winsound.Beep(1000, 300)
-        except Exception as e:
-            logger.error(f"Could not play alert sound: {e}")
-    else:
-        print("\a")  # Fallback system beep
+            if WINSOUND_AVAILABLE:
+                winsound.Beep(1200, 250)
+            else:
+                print("\a")
+        except Exception:
+            pass
+    threading.Thread(target=_beep, daemon=True).start()
 
 def detect_gaze_direction(eye_frame):
     try:
+        if eye_frame is None or eye_frame.size == 0:
+            return "Center"
         height, width = eye_frame.shape[:2]
+        if height == 0 or width == 0:
+            return "Center"
         if len(eye_frame.shape) > 2:
             eye_frame = cv2.cvtColor(eye_frame, cv2.COLOR_BGR2GRAY)
         threshold_eye = cv2.adaptiveThreshold(eye_frame, 255, cv2.ADAPTIVE_THRESH_MEAN_C, cv2.THRESH_BINARY_INV, 11, 2)
@@ -312,15 +383,19 @@ def detect_gaze_direction(eye_frame):
                     return "Left"
                 else:
                     return "Right"
-        return "Unknown"
+        return "Center"
     except Exception as e:
         logger.error(f"Error in detect_gaze_direction: {e}")
-        return "Error"
+        return "Center"
 
-def process_image(image_data):
+def process_image(image_data, session_id=None):
     if not face_cascade or not eye_cascade:
         return {
             "face_detected": False,
+            "face_count": 0,
+            "multiple_faces_detected": False,
+            "gadget_detected": False,
+            "gadget_name": "",
             "looking_at_screen": False,
             "warnings": 0,
             "max_warnings": MAX_WARNINGS,
@@ -328,61 +403,159 @@ def process_image(image_data):
             "look_direction": "Proctoring Disabled",
             "eyes_closed": False,
             "long_blink_count": 0,
+            "status_message": "OpenCV models not loaded",
             "error": "OpenCV models not loaded"
         }
-    exam_state, current_time = get_exam_state(), time.time()
-    face_detected, is_looking_at_screen, are_eyes_closed, look_direction = False, False, False, "Unknown"
+
+    exam_state = get_exam_state(session_id)
+    current_time = time.time()
+
+    face_detected = False
+    face_count = 0
+    multiple_faces_detected = False
+    is_looking_at_screen = False
+    are_eyes_closed = False
+    look_direction = "Unknown"
+    gadget_detected = False
+    gadget_name = ""
+    status_message = "Monitoring"
+    current_violation_reason = ""
+
     try:
-        frame = cv2.imdecode(np.frombuffer(base64.b64decode(image_data), np.uint8), cv2.IMREAD_COLOR)
+        # Decode frame safely (supports numpy array or base64 data URL)
+        if isinstance(image_data, np.ndarray):
+            frame = image_data
+        else:
+            if ',' in image_data:
+                image_data = image_data.split(',')[1]
+            raw_bytes = base64.b64decode(image_data)
+            np_arr = np.frombuffer(raw_bytes, np.uint8)
+            frame = cv2.imdecode(np_arr, cv2.IMREAD_COLOR)
+
+        if frame is None or frame.size == 0:
+            raise ValueError("Failed to decode image frame")
+
         gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
-        faces = face_cascade.detectMultiScale(gray, 1.1, 5, minSize=(30, 30))
-        face_detected = len(faces) > 0
-        if face_detected:
-            x, y, w, h = sorted(faces, key=lambda f: f[2]*f[3], reverse=True)[0]
+        faces = face_cascade.detectMultiScale(gray, 1.1, 4, minSize=(40, 40))
+        face_count = len(faces)
+
+        # ── 1. CLASSIFY EXACTLY 1 PERSON ATTENDING TEST ──────────────
+        if face_count == 0:
+            face_detected = False
+            multiple_faces_detected = False
+            look_direction = "No Person Detected"
+            status_message = "No Person Detected - Stay in Front of Camera"
+            current_violation_reason = "No candidate face visible in frame"
+            if not exam_state["is_looking_away"]:
+                exam_state.update({"is_looking_away": True, "away_start_time": current_time})
+
+        elif face_count > 1:
+            # Multiple people in camera view! Strictly prohibited
+            face_detected = True
+            multiple_faces_detected = True
+            look_direction = f"Multiple People ({face_count})"
+            status_message = f"Warning: Multiple People Detected ({face_count}) - Only 1 Person Allowed"
+            current_violation_reason = f"Multiple people detected ({face_count} faces) in camera"
+
+            if (current_time - exam_state["last_alert_time"]) > ALERT_COOLDOWN_SECONDS:
+                exam_state["warnings"] += 1
+                play_alert()
+                exam_state["last_alert_time"] = current_time
+                exam_state["last_violation_reason"] = current_violation_reason
+                logger.warning(f"Warning #{exam_state['warnings']} issued: Multiple people ({face_count})")
+
+        else:
+            # Exactly 1 person! Candidate verified
+            face_detected = True
+            multiple_faces_detected = False
+            status_message = "1 Person (Verified)"
+
+            x, y, w, h = faces[0]
             roi_gray = gray[y:y+h, x:x+w]
-            eyes = eye_cascade.detectMultiScale(roi_gray, 1.1, 5)
+            eyes = eye_cascade.detectMultiScale(roi_gray, 1.1, 4, minSize=(15, 15))
+
             if len(eyes) >= 1:
                 are_eyes_closed = False
                 if exam_state["is_eyes_closed"] and (current_time - exam_state["eyes_closed_start_time"]) > LONG_BLINK_SECONDS:
                     exam_state["long_blink_count"] += 1
-                    logger.info(f"Long blink detected. Count: {exam_state['long_blink_count']}")
                 exam_state["is_eyes_closed"] = False
-                look_direction = detect_gaze_direction(roi_gray[eyes[0][1]:eyes[0][1]+eyes[0][3], eyes[0][0]:eyes[0][0]+eyes[0][2]])
+
+                eye_x, eye_y, eye_w, eye_h = eyes[0]
+                look_direction = detect_gaze_direction(roi_gray[eye_y:eye_y+eye_h, eye_x:eye_x+eye_w])
+
                 if look_direction == "Center":
-                    is_looking_at_screen, exam_state["is_looking_away"] = True, False
+                    is_looking_at_screen = True
+                    exam_state["is_looking_away"] = False
+                    status_message = "1 Person Verified (Focused on Screen)"
                 else:
                     is_looking_at_screen = False
-                if not exam_state["is_looking_away"]:
-                    exam_state.update({"is_looking_away": True, "away_start_time": current_time})
+                    if not exam_state["is_looking_away"]:
+                        exam_state.update({"is_looking_away": True, "away_start_time": current_time})
+                    status_message = f"Looking {look_direction}"
             else:
-                are_eyes_closed, is_looking_at_screen, look_direction = True, False, "Eyes Closed"
+                are_eyes_closed = True
+                is_looking_at_screen = False
+                look_direction = "Eyes Closed"
+                status_message = "Eyes Closed"
                 if not exam_state["is_eyes_closed"]:
                     exam_state.update({"is_eyes_closed": True, "eyes_closed_start_time": current_time})
                 if not exam_state["is_looking_away"]:
                     exam_state.update({"is_looking_away": True, "away_start_time": current_time})
-        else:
-            look_direction = "No Face Detected"
-            if not exam_state["is_looking_away"]:
-                exam_state.update({"is_looking_away": True, "away_start_time": current_time})
-        if exam_state["is_looking_away"] and (current_time - exam_state["away_start_time"]) > ALERT_THRESHOLD_SECONDS and (current_time - exam_state["last_alert_time"]) > ALERT_COOLDOWN_SECONDS:
-            exam_state["warnings"] += 1
-            play_alert()
-            exam_state["last_alert_time"] = current_time
-            logger.warning(f"Warning #{exam_state['warnings']} issued. Reason: {look_direction}")
+
+        # ── 2. GADGET & ELECTRONIC DEVICE DETECTION ────────────────────
+        if gadget_model is not None:
+            has_gadget, detected_gadget_name, conf = detect_gadgets(frame)
+            if has_gadget:
+                gadget_detected = True
+                gadget_name = detected_gadget_name
+                look_direction = f"Gadget Detected: {gadget_name}"
+                status_message = f"Warning: {gadget_name} Detected!"
+                current_violation_reason = f"Unauthorized device detected: {gadget_name}"
+
+                if (current_time - exam_state["last_alert_time"]) > ALERT_COOLDOWN_SECONDS:
+                    exam_state["warnings"] += 1
+                    play_alert()
+                    exam_state["last_alert_time"] = current_time
+                    exam_state["last_violation_reason"] = current_violation_reason
+                    logger.warning(f"Warning #{exam_state['warnings']} issued: Gadget detected ({gadget_name})")
+
+        # ── 3. LOOKING AWAY FOR EXTENDED DURATION ──────────────────────
+        if exam_state["is_looking_away"] and not multiple_faces_detected and not gadget_detected:
+            if (current_time - exam_state["away_start_time"]) > ALERT_THRESHOLD_SECONDS:
+                if (current_time - exam_state["last_alert_time"]) > ALERT_COOLDOWN_SECONDS:
+                    exam_state["warnings"] += 1
+                    play_alert()
+                    exam_state["last_alert_time"] = current_time
+                    current_violation_reason = f"Candidate looking away ({look_direction})"
+                    exam_state["last_violation_reason"] = current_violation_reason
+                    logger.warning(f"Warning #{exam_state['warnings']} issued: Looking away ({look_direction})")
+
+        # ── 4. MAX WARNINGS REACHED -> VIOLATION ──────────────────────
         if exam_state["warnings"] >= MAX_WARNINGS:
             exam_state["violation_detected"] = True
+            if not exam_state.get("last_violation_reason"):
+                exam_state["last_violation_reason"] = current_violation_reason or "Exceeded max warnings (3/3)"
+
     except Exception as e:
         logger.error(f"Error in process_image: {e}", exc_info=True)
         look_direction = "Processing Error"
+        status_message = "Frame processing error"
+
     return {
         "face_detected": face_detected,
+        "face_count": face_count,
+        "multiple_faces_detected": multiple_faces_detected,
+        "gadget_detected": gadget_detected,
+        "gadget_name": gadget_name,
         "looking_at_screen": is_looking_at_screen,
         "warnings": exam_state.get("warnings", 0),
         "max_warnings": MAX_WARNINGS,
         "violation_detected": exam_state.get("violation_detected", False),
+        "violation_reason": exam_state.get("last_violation_reason", current_violation_reason),
         "look_direction": look_direction,
         "eyes_closed": are_eyes_closed,
-        "long_blink_count": exam_state.get("long_blink_count", 0)
+        "long_blink_count": exam_state.get("long_blink_count", 0),
+        "status_message": status_message
     }
 
 # === API ROUTES ===
@@ -451,13 +624,17 @@ def finish_interview():
 @interview_bp.route('/api/process-frame', methods=['POST'])
 def process_frame():
     try:
-        image_b64 = request.json['image']
+        data = request.get_json(silent=True) or {}
+        image_b64 = data.get('image', '')
+        if not image_b64:
+            return jsonify({"error": "No image data provided"}), 400
         if ',' in image_b64:
             image_b64 = image_b64.split(',')[1]
-        proctor_data = process_image(image_b64)
+        sid = request.headers.get("X-Session-ID") or data.get("session_id")
+        proctor_data = process_image(image_b64, session_id=sid)
         return jsonify(proctor_data), 200
     except Exception as e:
-        logger.error(f"Error in /api/process-frame endpoint: {e}")
+        logger.error(f"Error in /api/process-frame endpoint: {e}", exc_info=True)
         return jsonify({"error": "Failed to process frame on server"}), 500
 
 @interview_bp.route('/api/end-exam', methods=['POST'])

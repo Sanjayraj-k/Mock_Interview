@@ -16,7 +16,11 @@ import {
   Send,
   Play,
   Pause,
-  XCircle
+  XCircle,
+  Smartphone,
+  Users,
+  UserCheck,
+  UserX
 } from 'lucide-react';
 
 // Simulated candidate data (replaced with localStorage data)
@@ -33,20 +37,26 @@ const getCandidateData = () => {
 let candidateData = getCandidateData();
 
 // ====================================================================
-// WebCam Proctoring Component (No changes needed here)
+// WebCam Proctoring Component - Single Person & Gadget Monitoring
 // ====================================================================
 
 const WebCam = () => {
   const [isActive, setIsActive] = useState(false);
   const [proctorData, setProctorData] = useState({
     face_detected: false,
+    face_count: 0,
+    multiple_faces_detected: false,
+    gadget_detected: false,
+    gadget_name: '',
     looking_at_screen: false,
     warnings: 0,
     max_warnings: 3,
     violation_detected: false,
+    violation_reason: '',
     look_direction: 'Unknown',
     eyes_closed: false,
     long_blink_count: 0,
+    status_message: 'Monitoring'
   });
   const [error, setError] = useState(null);
   const videoRef = useRef(null);
@@ -103,17 +113,21 @@ const WebCam = () => {
 
   const sendFrameToServer = async (imageData) => {
     try {
+      const sid = localStorage.getItem('ti_session_id') || '';
       const response = await fetch(`${apiUrl}/process-frame`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: {
+          'Content-Type': 'application/json',
+          ...(sid ? { 'X-Session-ID': sid } : {})
+        },
         credentials: 'include',
-        body: JSON.stringify({ image: imageData.split(',')[1] }),
+        body: JSON.stringify({ image: imageData.split(',')[1], session_id: sid }),
       });
       if (!response.ok) throw new Error(`Server error: ${response.statusText}`);
       const data = await response.json();
       setProctorData(prev => ({ ...prev, ...data }));
     } catch (err) {
-      console.error('Error processing frame:', err);
+      // Safe catch, does not freeze
     }
   };
 
@@ -122,45 +136,154 @@ const WebCam = () => {
     return () => stopProctoring();
   }, []);
 
+  const hasHighAlert = proctorData.violation_detected || proctorData.multiple_faces_detected || proctorData.gadget_detected;
+
   const getStatusIcon = () => {
-    if (proctorData.violation_detected) return <AlertCircle size={20} className="text-red-400" />;
-    if (!proctorData.face_detected) return <AlertTriangle size={20} className="text-amber-400" />;
-    if (proctorData.looking_at_screen) return <CheckCircle size={20} className="text-emerald-400" />;
-    return <AlertTriangle size={20} className="text-amber-400" />;
+    if (hasHighAlert) return <AlertCircle size={20} className="text-red-500 animate-pulse" />;
+    if (!proctorData.face_detected) return <AlertTriangle size={20} className="text-amber-500" />;
+    if (proctorData.looking_at_screen) return <CheckCircle size={20} className="text-emerald-500" />;
+    return <AlertTriangle size={20} className="text-amber-500" />;
   };
   
   return (
     <div className="w-full max-w-lg mx-auto">
       <div className="bg-white/80 backdrop-blur-sm border border-gray-200/50 rounded-2xl p-6 shadow-xl">
-        <div className="flex items-center justify-between mb-6">
+        <div className="flex items-center justify-between mb-4">
           <h2 className="text-xl font-bold bg-gradient-to-r from-indigo-900 to-purple-900 bg-clip-text text-transparent">Proctoring Monitor</h2>
           <div className="flex items-center gap-2">
             <Shield className="w-5 h-5 text-indigo-600" />
-            <span className="text-sm font-medium text-gray-600">AI Protected</span>
+            <span className="text-sm font-medium text-gray-600">AI Guard 2.0</span>
           </div>
         </div>
-        {error && <div className="mb-6 p-4 bg-red-50 border border-red-200 rounded-xl flex items-center text-red-700"><AlertCircle className="mr-3 w-5 h-5" /><p className="text-sm">{error}</p></div>}
+
+        {error && <div className="mb-4 p-3 bg-red-50 border border-red-200 rounded-xl text-red-700 text-sm flex items-center gap-2"><AlertCircle className="w-4 h-4"/>{error}</div>}
+
+        {/* Real-time alert banner */}
+        {hasHighAlert && (
+          <div className="mb-4 p-3 bg-red-100 border-2 border-red-400 rounded-xl text-red-800 text-xs font-semibold flex items-center gap-2 shadow-sm animate-pulse">
+            <AlertCircle className="w-5 h-5 flex-shrink-0 text-red-600" />
+            <div>
+              {proctorData.gadget_detected && <p className="font-bold text-red-900">PROHIBITED GADGET: {proctorData.gadget_name || 'Device'} in view! Remove immediately.</p>}
+              {proctorData.multiple_faces_detected && <p className="font-bold text-red-900">MULTIPLE PEOPLE: Only 1 person allowed to attend the test!</p>}
+              {proctorData.violation_detected && <p className="text-red-700">VIOLATION: {proctorData.violation_reason || 'Max warnings reached'}</p>}
+            </div>
+          </div>
+        )}
+
         <div className="space-y-4">
           <div className="relative">
-            <div className={`relative aspect-video bg-gray-900 rounded-xl overflow-hidden transition-all duration-300 ${proctorData.violation_detected ? 'ring-4 ring-red-400 ring-opacity-50 shadow-lg shadow-red-400/20' : 'ring-2 ring-indigo-200 ring-opacity-30'}`}>
+            <div className={`relative aspect-video bg-gray-900 rounded-xl overflow-hidden transition-all duration-300 ${
+              hasHighAlert ? 'ring-4 ring-red-500/80 animate-pulse' : 'ring-2 ring-indigo-200 ring-opacity-30'
+            }`}>
               <video ref={videoRef} className="w-full h-full object-cover" autoPlay playsInline muted />
-              {proctorData.violation_detected && <div className="absolute inset-0 bg-gradient-to-t from-red-600/60 to-transparent flex items-center justify-center"><div className="text-center"><AlertCircle className="w-12 h-12 text-white mx-auto mb-2 animate-pulse" /><p className="text-white font-bold text-lg">VIOLATION DETECTED</p></div></div>}
-              {!isActive && !error && <div className="absolute inset-0 bg-gradient-to-br from-indigo-900/80 to-purple-900/80 flex items-center justify-center"><div className="text-center"><div className="relative"><Camera size={48} className="text-white/70 mx-auto mb-3" /><div className="absolute inset-0 animate-ping"><Camera size={48} className="text-white/30 mx-auto" /></div></div><p className="text-white/90 font-medium">Initializing AI Monitor...</p></div></div>}
+
+              {/* Dynamic Camera Overlays */}
+              {proctorData.gadget_detected && (
+                <div className="absolute inset-0 bg-red-900/75 backdrop-blur-xs flex items-center justify-center p-4">
+                  <div className="text-center">
+                    <Smartphone className="w-14 h-14 text-white mx-auto mb-2 animate-bounce" />
+                    <p className="text-white font-black text-lg tracking-wider uppercase">UNAUTHORIZED GADGET DETECTED</p>
+                    <p className="text-red-200 text-xs mt-1 font-semibold">{proctorData.gadget_name || 'Mobile Phone'} in Camera View</p>
+                    <span className="mt-2 inline-block px-3 py-1 bg-red-600 text-white rounded-full text-xs font-bold shadow">Remove device immediately</span>
+                  </div>
+                </div>
+              )}
+
+              {!proctorData.gadget_detected && proctorData.multiple_faces_detected && (
+                <div className="absolute inset-0 bg-red-900/75 backdrop-blur-xs flex items-center justify-center p-4">
+                  <div className="text-center">
+                    <Users className="w-14 h-14 text-white mx-auto mb-2 animate-pulse" />
+                    <p className="text-white font-black text-lg tracking-wider uppercase">MULTIPLE PEOPLE DETECTED ({proctorData.face_count})</p>
+                    <p className="text-red-200 text-xs mt-1 font-semibold">Only 1 candidate allowed to attend the test</p>
+                    <span className="mt-2 inline-block px-3 py-1 bg-red-600 text-white rounded-full text-xs font-bold shadow">Candidate must be alone</span>
+                  </div>
+                </div>
+              )}
+
+              {!proctorData.gadget_detected && !proctorData.multiple_faces_detected && proctorData.violation_detected && (
+                <div className="absolute inset-0 bg-red-900/80 flex items-center justify-center p-4">
+                  <div className="text-center">
+                    <AlertCircle className="w-12 h-12 text-white mx-auto mb-2 animate-bounce" />
+                    <p className="text-white font-bold text-lg">PROCTORING VIOLATION</p>
+                    <p className="text-red-200 text-xs mt-1">{proctorData.violation_reason || 'Excessive warnings recorded'}</p>
+                  </div>
+                </div>
+              )}
+
+              {!isActive && !error && (
+                <div className="absolute inset-0 bg-gradient-to-br from-indigo-900/80 to-purple-900/80 flex items-center justify-center">
+                  <div className="text-center">
+                    <Camera size={48} className="text-white/70 mx-auto mb-3" />
+                    <p className="text-white/90 font-medium">Initializing AI Proctor...</p>
+                  </div>
+                </div>
+              )}
             </div>
             <canvas ref={canvasRef} className="hidden" />
           </div>
+
           <div className="bg-gradient-to-r from-gray-50 to-white rounded-xl p-4 border border-gray-100">
             <div className="flex items-center justify-between mb-4">
               <h3 className="font-semibold text-gray-900 flex items-center gap-2">{getStatusIcon()}<span>Security Status</span></h3>
-              <div className={`px-3 py-1 rounded-full text-xs font-medium ${proctorData.violation_detected ? 'bg-red-100 text-red-700' : proctorData.looking_at_screen ? 'bg-emerald-100 text-emerald-700' : 'bg-amber-100 text-amber-700'}`}>{proctorData.violation_detected ? 'Alert' : proctorData.looking_at_screen ? 'Secure' : 'Monitor'}</div>
+              <div className={`px-3 py-1 rounded-full text-xs font-bold ${
+                proctorData.violation_detected ? 'bg-red-100 text-red-700'
+                : proctorData.multiple_faces_detected || proctorData.gadget_detected ? 'bg-red-100 text-red-700'
+                : proctorData.looking_at_screen ? 'bg-emerald-100 text-emerald-700'
+                : 'bg-amber-100 text-amber-700'
+              }`}>
+                {proctorData.violation_detected ? 'Violation' : proctorData.gadget_detected ? 'Gadget Alert' : proctorData.multiple_faces_detected ? 'Multi-User Alert' : proctorData.looking_at_screen ? 'Secure' : 'Warning'}
+              </div>
             </div>
+
             <div className="grid grid-cols-2 gap-3 text-sm">
-              <div className="flex items-center justify-between p-3 bg-white rounded-lg border border-gray-100"><span className="text-gray-600">Face Detected</span><div className={`w-2 h-2 rounded-full ${proctorData.face_detected ? 'bg-emerald-400' : 'bg-red-400'}`}></div></div>
-              <div className="flex items-center justify-between p-3 bg-white rounded-lg border border-gray-100"><span className="text-gray-600">Screen Focus</span><div className={`w-2 h-2 rounded-full ${proctorData.looking_at_screen ? 'bg-emerald-400' : 'bg-amber-400'}`}></div></div>
-              <div className="flex items-center justify-between p-3 bg-white rounded-lg border border-gray-100"><span className="text-gray-600">Warnings</span><span className={`font-medium ${proctorData.warnings > 0 ? 'text-amber-600' : 'text-emerald-600'}`}>{proctorData.warnings}/{proctorData.max_warnings}</span></div>
-              <div className="flex items-center justify-between p-3 bg-white rounded-lg border border-gray-100"><span className="text-gray-600">Eye Closure</span><span className={`font-medium ${proctorData.long_blink_count > 0 ? 'text-amber-600' : 'text-emerald-600'}`}>{proctorData.long_blink_count}</span></div>
+              {/* 1 Person Verification */}
+              <div className={`flex items-center justify-between p-3 rounded-lg border ${
+                proctorData.multiple_faces_detected ? 'bg-red-50 border-red-200'
+                : proctorData.face_detected ? 'bg-white border-gray-100'
+                : 'bg-amber-50 border-amber-200'
+              }`}>
+                <div className="flex items-center gap-1.5">
+                  {proctorData.multiple_faces_detected ? <Users size={15} className="text-red-600"/> : proctorData.face_detected ? <UserCheck size={15} className="text-emerald-600"/> : <UserX size={15} className="text-amber-600"/>}
+                  <span className="text-gray-700 text-xs font-medium">Candidate</span>
+                </div>
+                <span className={`text-xs font-bold ${
+                  proctorData.multiple_faces_detected ? 'text-red-600'
+                  : proctorData.face_detected ? 'text-emerald-600'
+                  : 'text-amber-600'
+                }`}>
+                  {proctorData.multiple_faces_detected ? `Multi (${proctorData.face_count})` : proctorData.face_detected ? '1 Person' : 'No Face'}
+                </span>
+              </div>
+
+              {/* Gadget Monitoring */}
+              <div className={`flex items-center justify-between p-3 rounded-lg border ${
+                proctorData.gadget_detected ? 'bg-red-50 border-red-200' : 'bg-white border-gray-100'
+              }`}>
+                <div className="flex items-center gap-1.5">
+                  <Smartphone size={15} className={proctorData.gadget_detected ? 'text-red-600' : 'text-gray-400'}/>
+                  <span className="text-gray-700 text-xs font-medium">Gadgets</span>
+                </div>
+                <span className={`text-xs font-bold ${proctorData.gadget_detected ? 'text-red-600' : 'text-emerald-600'}`}>
+                  {proctorData.gadget_detected ? proctorData.gadget_name || 'Detected' : 'None'}
+                </span>
+              </div>
+
+              {/* Warnings Count */}
+              <div className="flex items-center justify-between p-3 bg-white rounded-lg border border-gray-100">
+                <span className="text-gray-600 text-xs font-medium">Warnings</span>
+                <span className={`text-xs font-bold ${proctorData.warnings > 0 ? 'text-amber-600' : 'text-emerald-600'}`}>
+                  {proctorData.warnings}/{proctorData.max_warnings}
+                </span>
+              </div>
+
+              {/* Screen Focus */}
+              <div className="flex items-center justify-between p-3 bg-white rounded-lg border border-gray-100">
+                <span className="text-gray-600 text-xs font-medium">Gaze Focus</span>
+                <span className={`text-xs font-bold ${proctorData.looking_at_screen ? 'text-emerald-600' : 'text-amber-600'}`}>
+                  {proctorData.looking_at_screen ? 'Center' : proctorData.look_direction || 'Away'}
+                </span>
+              </div>
             </div>
-            <div className="mt-3 p-3 bg-white rounded-lg border border-gray-100"><div className="flex items-center justify-between"><span className="text-gray-600 text-sm">Look Direction</span><span className="font-medium text-gray-900 text-sm">{proctorData.look_direction}</span></div></div>
           </div>
         </div>
       </div>

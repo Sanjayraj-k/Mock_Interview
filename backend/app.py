@@ -475,36 +475,56 @@ def verify_face_embeddings():
     except Exception as e:
         app.logger.error(f"Verify face error: {e}")
 from groq import Groq
+from concurrent.futures import ThreadPoolExecutor, as_completed
 
 # Groq Client setup
 groq_api_key = os.environ.get("GROQ_API_KEY")
 groq_client = Groq(api_key=groq_api_key) if groq_api_key else None
 
-def generate_groq_questions(weak_topics, count=15):
+STANDARD_15_TOPICS = [
+    "Profit and Loss",
+    "Percentages",
+    "Time and Work",
+    "Algebra",
+    "Ratio and Proportion",
+    "Simple Interest",
+    "Compound Interest",
+    "Speed and Distance",
+    "Averages",
+    "Number Series",
+    "Permutations and Combinations",
+    "Probability",
+    "Mixtures and Alligations",
+    "Pipes and Cisterns",
+    "Boats and Streams"
+]
+
+def generate_groq_questions(weak_topics=None, count=15, is_diagnostic=False):
     """
-    Dynamically generates aptitude MCQs using Groq LLaMA model.
-    Makes SEPARATE API calls per weak topic to GUARANTEE the distribution.
-    
-    Example: weak_topics=["Profit and Loss", "Percentages"], count=15
-    → Call 1: 5 questions on "Profit and Loss" only
-    → Call 2: 5 questions on "Percentages" only
-    → Call 3: 5 questions on other mixed topics
+    Dynamically generates aptitude MCQs using Groq models.
+    Supports multi-stage adaptive progression:
+    - Stage 1 (Diagnostic): 15 questions across all 15 topics (1 question each).
+    - Stage 2 (Multi-weak remediation): 15 questions distributed equally among all active weak topics (e.g. 5 weak topics = 3 each).
+    - Stage 3 (Refined weak focus): 10 questions prioritizing 1-2 weak topics + 5 questions from other refresher topics.
+    - Stage 4 (Mastery Reset): After 100% full marks, weak topics reset -> all 15 topics generated again.
     """
     try:
         if not groq_client:
             app.logger.warning("Groq client not initialized (missing GROQ_API_KEY)")
             return None
 
-        if not weak_topics:
-            weak_topics = ["Profit and Loss", "Percentages", "Time and Work"]
-
-        system_prompt = "You are a JSON generator. Return ONLY valid raw JSON arrays. No markdown, no extra text, no code blocks."
+        system_prompt = (
+            "You are an aptitude question generator. Return ONLY a valid JSON array. "
+            "No markdown, no backticks, no code blocks, no text before or after the JSON array."
+        )
 
         models_to_try = [
-            "openai/gpt-oss-120b"
+            "openai/gpt-oss-120b",
+            "openai/gpt-oss-20b",
+            "qwen/qwen3.8-27b"
         ]
 
-        def call_groq_single(prompt_text):
+        def call_groq_single(prompt_text, max_tokens=2200):
             """Call Groq and return parsed questions list."""
             for model_name in models_to_try:
                 try:
@@ -514,15 +534,20 @@ def generate_groq_questions(weak_topics, count=15):
                             {"role": "system", "content": system_prompt},
                             {"role": "user", "content": prompt_text}
                         ],
-                        temperature=0.5,
-                        max_tokens=3000
+                        temperature=0.4,
+                        max_tokens=max_tokens
                     )
                     if completion and completion.choices:
                         response_text = completion.choices[0].message.content.strip()
                         if response_text.startswith("```"):
                             response_text = re.sub(r'^```(?:json)?\s*', '', response_text, flags=re.MULTILINE)
                             response_text = re.sub(r'\s*```$', '', response_text, flags=re.MULTILINE)
-                        questions = json.loads(response_text)
+                        try:
+                            questions = json.loads(response_text)
+                        except Exception:
+                            # Clean control characters or unescaped backslashes
+                            cleaned = re.sub(r'[\x00-\x1f\x7f-\x9f]', ' ', response_text)
+                            questions = json.loads(cleaned)
                         if isinstance(questions, list) and len(questions) > 0:
                             return questions
                 except Exception as model_err:
@@ -530,91 +555,169 @@ def generate_groq_questions(weak_topics, count=15):
                     continue
             return None
 
-        # --- Calculate distribution (strictly cap to top 2 weak topics) ---
-        weak_topics = weak_topics[:2]
-        num_weak = len(weak_topics)
-
-        topic_counts = {}
-        if num_weak == 2:
-            topic_counts[weak_topics[0]] = 6 # 6 questions for #1 worst topic
-            topic_counts[weak_topics[1]] = 5 # 5 questions for #2 worst topic
-            other_question_total = 4          # 4 questions for other topics
-        elif num_weak == 1:
-            topic_counts[weak_topics[0]] = 10 # 10 questions for single weak topic
-            other_question_total = 5           # 5 questions for other topics
-        else:
-            other_question_total = count
-
-        app.logger.info(f"Question distribution plan: {topic_counts}, other topics: {other_question_total}")
-
         all_questions = []
 
-        # --- Step 1: Generate questions for EACH weak topic separately ---
-        for topic, topic_count in topic_counts.items():
-            prompt = f"""Generate exactly {topic_count} aptitude multiple-choice questions ONLY on the topic: "{topic}".
+        # --- Stage 1 & Stage 4: Diagnostic or Full Mastery Reset (All 15 Topics) ---
+        if is_diagnostic or not weak_topics or len(weak_topics) == 0:
+            app.logger.info("Generating diagnostic/full-syllabus test across all 15 topics in 3 concurrent batches")
+            topic_batches = [
+                STANDARD_15_TOPICS[0:5],
+                STANDARD_15_TOPICS[5:10],
+                STANDARD_15_TOPICS[10:15]
+            ]
 
-ALL {topic_count} questions MUST be about "{topic}" and nothing else.
-Set the "topic" field to exactly "{topic}" for every question.
+            def fetch_batch(batch):
+                prompt = f"""Generate exactly {len(batch)} aptitude multiple-choice questions.
+You MUST generate exactly ONE question for EACH of the following topics in order:
+{json.dumps(batch)}
 
-Each question must have 4 options (A, B, C, D).
-The correctAnswer must be the FULL option text (e.g., "A. 14.5%").
-
-Return ONLY a JSON array:
-[{{"question":"...","options":["A. ...","B. ...","C. ...","D. ..."],"correctAnswer":"A. ...","topic":"{topic}","explanation":"..."}}]"""
-
-            app.logger.info(f"Generating {topic_count} questions for weak topic: {topic}")
-            topic_questions = call_groq_single(prompt)
-
-            if topic_questions:
-                # Force-set the topic field to ensure consistency
-                for q in topic_questions:
-                    q["topic"] = topic
-                all_questions.extend(topic_questions[:topic_count])
-                app.logger.info(f"Got {len(topic_questions)} questions for '{topic}', using {min(len(topic_questions), topic_count)}")
-            else:
-                app.logger.warning(f"Failed to generate questions for weak topic: {topic}")
-
-        # --- Step 2: Generate remaining questions on OTHER topics ---
-        if other_question_total > 0:
-            other_topics_list = ["Algebra", "Ratio and Proportion", "Speed and Distance", 
-                                 "Time and Work", "Simple Interest", "Averages", "Number Series"]
-            other_topics_filtered = [t for t in other_topics_list if t not in weak_topics]
-            other_topics_str = ", ".join(other_topics_filtered[:5])
-
-            prompt = f"""Generate exactly {other_question_total} aptitude multiple-choice questions on MIXED topics.
-Choose from these topics ONLY: {other_topics_str}.
-Do NOT generate questions on: {", ".join(weak_topics)}.
-
-Each question must have 4 options (A, B, C, D).
-The correctAnswer must be the FULL option text (e.g., "A. 120").
+Requirements:
+- Each question must be about its designated topic.
+- Set the "topic" field to exactly the matching topic name from the list.
+- Exactly 4 options per question (A., B., C., D.).
+- "correctAnswer" must be the full option text (e.g., "A. 14.5%").
+- "explanation" explaining the step-by-step solution.
 
 Return ONLY a JSON array:
 [{{"question":"...","options":["A. ...","B. ...","C. ...","D. ..."],"correctAnswer":"A. ...","topic":"...","explanation":"..."}}]"""
+                res = call_groq_single(prompt, max_tokens=2200)
+                if res and isinstance(res, list):
+                    for idx, q in enumerate(res):
+                        if idx < len(batch):
+                            q["topic"] = batch[idx]
+                    return res[:len(batch)]
+                return []
 
-            app.logger.info(f"Generating {other_question_total} questions for other topics")
-            other_questions = call_groq_single(prompt)
+            with ThreadPoolExecutor(max_workers=3) as executor:
+                futures = [executor.submit(fetch_batch, b) for b in topic_batches]
+                for f in as_completed(futures):
+                    res = f.result()
+                    if res:
+                        all_questions.extend(res)
 
-            if other_questions:
-                all_questions.extend(other_questions[:other_question_total])
-                app.logger.info(f"Got {len(other_questions)} questions for other topics, using {min(len(other_questions), other_question_total)}")
-            else:
-                app.logger.warning("Failed to generate questions for other topics")
+        # --- Stage 2: Multi-Weak Remediation (3 or more weak topics) ---
+        elif len(weak_topics) >= 3:
+            num_weak = len(weak_topics)
+            per_topic = count // num_weak
+            remainder = count % num_weak
+
+            topic_distribution = {}
+            for idx, t in enumerate(weak_topics):
+                topic_distribution[t] = per_topic + (1 if idx < remainder else 0)
+
+            app.logger.info(f"Generating remediation test covering {num_weak} weak topics: {topic_distribution}")
+
+            def fetch_topic_questions(topic, q_count):
+                prompt = f"""Generate exactly {q_count} aptitude multiple-choice questions ONLY on the topic: "{topic}".
+ALL {q_count} questions MUST be about "{topic}".
+Set the "topic" field to exactly "{topic}" for every question.
+Each question must have 4 options (A., B., C., D.).
+The correctAnswer must be the full option text (e.g., "A. 14.5%").
+
+Return ONLY a JSON array:
+[{{"question":"...","options":["A. ...","B. ...","C. ...","D. ..."],"correctAnswer":"A. ...","topic":"{topic}","explanation":"..."}}]"""
+                res = call_groq_single(prompt, max_tokens=1800)
+                if res and isinstance(res, list):
+                    for q in res:
+                        q["topic"] = topic
+                    return res[:q_count]
+                return []
+
+            with ThreadPoolExecutor(max_workers=min(len(topic_distribution), 6)) as executor:
+                futures = [executor.submit(fetch_topic_questions, t, cnt) for t, cnt in topic_distribution.items()]
+                for f in as_completed(futures):
+                    res = f.result()
+                    if res:
+                        all_questions.extend(res)
+
+        # --- Stage 3: Priority + Refresher (1 or 2 weak topics) ---
+        else:
+            topic_distribution = {}
+            if len(weak_topics) == 2:
+                topic_distribution[weak_topics[0]] = 5
+                topic_distribution[weak_topics[1]] = 5
+                other_count = 5
+            else: # 1 weak topic
+                topic_distribution[weak_topics[0]] = 10
+                other_count = 5
+
+            other_candidates = [t for t in STANDARD_15_TOPICS if t not in weak_topics]
+            refresher_topics = other_candidates[:other_count]
+
+            app.logger.info(f"Generating priority test: weak topics {topic_distribution}, refresher topics: {refresher_topics}")
+
+            def fetch_topic_questions(topic, q_count):
+                prompt = f"""Generate exactly {q_count} aptitude multiple-choice questions ONLY on the topic: "{topic}".
+ALL {q_count} questions MUST be about "{topic}".
+Set the "topic" field to exactly "{topic}" for every question.
+Each question must have 4 options (A., B., C., D.).
+The correctAnswer must be the full option text.
+
+Return ONLY a JSON array:
+[{{"question":"...","options":["A. ...","B. ...","C. ...","D. ..."],"correctAnswer":"A. ...","topic":"{topic}","explanation":"..."}}]"""
+                res = call_groq_single(prompt, max_tokens=1800)
+                if res and isinstance(res, list):
+                    for q in res:
+                        q["topic"] = topic
+                    return res[:q_count]
+                return []
+
+            def fetch_refresher_questions(ref_topics, q_count):
+                prompt = f"""Generate exactly {q_count} aptitude multiple-choice questions on MIXED topics.
+Choose from these topics ONLY: {", ".join(ref_topics)}.
+Do NOT generate questions on: {", ".join(weak_topics)}.
+Each question must have 4 options (A., B., C., D.).
+The correctAnswer must be the full option text.
+
+Return ONLY a JSON array:
+[{{"question":"...","options":["A. ...","B. ...","C. ...","D. ..."],"correctAnswer":"A. ...","topic":"...","explanation":"..."}}]"""
+                res = call_groq_single(prompt, max_tokens=1800)
+                return res if (res and isinstance(res, list)) else []
+
+            with ThreadPoolExecutor(max_workers=4) as executor:
+                futures = [
+                    executor.submit(fetch_topic_questions, t, cnt)
+                    for t, cnt in topic_distribution.items()
+                ]
+                if other_count > 0:
+                    futures.append(executor.submit(fetch_refresher_questions, refresher_topics, other_count))
+
+                for f in as_completed(futures):
+                    res = f.result()
+                    if res and isinstance(res, list):
+                        all_questions.extend(res)
 
         if not all_questions:
             return None
 
-        # --- Step 3: Log final distribution ---
+        # Supplement if any batch failed to reach full count
+        if len(all_questions) < count:
+            needed = count - len(all_questions)
+            app.logger.info(f"Supplementing {needed} questions to reach count={count}")
+            try:
+                total_db = db.aptitude.count_documents({})
+                if total_db > 0:
+                    pipeline = [{"$sample": {"size": min(needed, total_db)}}]
+                    db_qs = list(db.aptitude.aggregate(pipeline))
+                    for idx, q in enumerate(db_qs):
+                        q['_id'] = str(q['_id'])
+                        if 'topic' not in q or not q['topic']:
+                            q['topic'] = STANDARD_15_TOPICS[idx % len(STANDARD_15_TOPICS)]
+                    all_questions.extend(db_qs)
+            except Exception as supp_err:
+                app.logger.warning(f"Could not supplement questions: {supp_err}")
+
+        # Shuffle to mix questions
+        import random
+        random.shuffle(all_questions)
+
         final_dist = {}
         for q in all_questions:
             t = q.get("topic", "Unknown")
             final_dist[t] = final_dist.get(t, 0) + 1
         app.logger.info(f"Final question distribution: {final_dist} (total: {len(all_questions)})")
 
-        # Shuffle to mix weak and other topic questions
-        import random
-        random.shuffle(all_questions)
-
-        return all_questions
+        return all_questions[:count]
 
     except Exception as e:
         app.logger.error(f"Error generating Groq questions: {e}")
@@ -623,20 +726,25 @@ Return ONLY a JSON array:
 @app.route('/api/get-random-questions', methods=['GET'])
 def get_random_questions():
     """
-    Fetches questions for a candidate.
-    If the candidate has weak topics from previous test attempts, uses Groq LLaMA
-    to dynamically generate questions prioritizing those weak topics (e.g. Profit and Loss).
+    Fetches questions for a candidate based strictly on their LAST attempted test in MongoDB.
+    
+    Progression Lifecycle:
+    - Attempt 1 (Diagnostic): No past test in MongoDB -> 15 questions across all 15 topics.
+    - Attempt 2 (Remediation): Past test has >= 3 weak topics -> 15 questions distributed only among weak topics.
+    - Attempt 3 (Priority + Refresher): Past test has 1-2 weak topics -> 10 questions on weak topics + 5 refresher questions.
+    - Attempt 4+ (Mastery Reset): Past test scored 100% full marks -> weak topics cleared, returns to all 15 topics.
     """
     try:
         email = request.args.get('email', '').strip()
         candidate_id = request.args.get('candidate_id', '').strip()
         count = request.args.get('count', default=15, type=int)
 
+        latest_result = None
+        attempt_number = 1
         weak_topics = []
-        has_previous_attempts = False
-        past_results_count = 0
+        is_diagnostic = False
 
-        # Look up candidate's past quiz results if email or candidate_id provided
+        # Look up candidate's strictly LAST (most recent) test attempt from MongoDB
         if email or candidate_id:
             query_conds = []
             if email:
@@ -645,86 +753,66 @@ def get_random_questions():
                 query_conds.append({"candidate_id": candidate_id})
                 query_conds.append({"candidateId": candidate_id})
 
-            query = {"$or": query_conds}
-            past_results = list(db.quiz_results.find(query).sort("submittedAt", -1))
-            past_results_count = len(past_results)
+            query = {"$or": query_conds, "round": 1}
 
-            if past_results:
-                has_previous_attempts = True
-                topics_loss = {}
-                # Weight recent attempt weak topics more heavily
-                for idx, res in enumerate(past_results):
-                    weight = 3 if idx == 0 else 1 # Most recent attempt has highest weight
-                    wt = res.get("weak_topics", [])
-                    for t in wt:
-                        topics_loss[t] = topics_loss.get(t, 0) + (3 * weight)
-                    tb = res.get("topic_breakdown", {})
-                    for t, info in tb.items():
-                        if isinstance(info, dict) and info.get("marks_lost", 0) > 0:
-                            topics_loss[t] = topics_loss.get(t, 0) + (info.get("marks_lost", 0) * weight)
+            # Fetch ONLY the last (most recent) test result from MongoDB
+            latest_result = db.quiz_results.find_one(query, sort=[("submittedAt", -1)])
+            total_past_attempts = db.quiz_results.count_documents(query)
+            attempt_number = total_past_attempts + 1
 
-                sorted_weak = sorted(topics_loss.keys(), key=lambda k: topics_loss[k], reverse=True)
-                # Keep strictly the TOP 2 weakest topics
-                weak_topics = sorted_weak[:2]
+            if latest_result:
+                score = latest_result.get("score", 0)
+                total_q = latest_result.get("total_questions", 15)
+                pct = latest_result.get("percentage", 0)
 
-            # Check student record for cumulative weakTopics if no results found
-            if not weak_topics:
-                student = None
-                if email:
-                    student = db.students.find_one({"email": email})
-                elif candidate_id:
-                    try:
-                        student = db.students.find_one({"_id": ObjectId(candidate_id)})
-                    except Exception:
-                        pass
-
-                if student and student.get("weakTopics"):
-                    weak_topics = student.get("weakTopics")[:2]
-
-        # If student has previous attempts or weak topics, use Groq LLaMA question generator!
-        if has_previous_attempts or len(weak_topics) > 0:
-            if not weak_topics:
-                weak_topics = ["Profit and Loss", "Percentages"]
+                # Check if candidate scored full marks in their last attempt (Mastery)
+                if score >= total_q or pct >= 100.0:
+                    app.logger.info(f"Candidate {email} scored full marks on attempt {latest_result.get('attempt_number', total_past_attempts)}. Resetting weak topics to all 15 topics.")
+                    weak_topics = []
+                    is_diagnostic = True
+                    # Reset weak topics in student record as well
+                    if email:
+                        db.students.update_one({"email": email}, {"$set": {"weakTopics": []}})
+                else:
+                    # Take ONLY weak topics from the LAST test result
+                    weak_topics = latest_result.get("weak_topics", [])
+                    if not weak_topics:
+                        tb = latest_result.get("topic_breakdown", {})
+                        weak_topics = [t for t, s in tb.items() if isinstance(s, dict) and s.get("marks_lost", 0) > 0]
             else:
-                weak_topics = weak_topics[:2] # Strictly top 2 weakest topics
+                # No previous attempts: 1st time diagnostic test
+                is_diagnostic = True
+                app.logger.info(f"Candidate {email} has no previous attempts. Starting Stage 1 Diagnostic across all 15 topics.")
 
-            app.logger.info(f"Generating Groq LLaMA questions for {email} with top 2 weak topics priority: {weak_topics}")
-            llm_questions = generate_groq_questions(weak_topics, count=count)
-            if llm_questions:
-                return jsonify({
-                    "is_llm_generated": True,
-                    "weak_topics": weak_topics,
-                    "attempt": past_results_count + 1,
-                    "questions": llm_questions
-                }), 200
+        app.logger.info(f"Generating questions for {email}: attempt #{attempt_number}, weak_topics={weak_topics}, is_diagnostic={is_diagnostic}")
+        llm_questions = generate_groq_questions(weak_topics=weak_topics, count=count, is_diagnostic=is_diagnostic)
 
-        # Fallback to database static questions (for 1st attempt or if Groq is unavailable)
+        if llm_questions:
+            return jsonify({
+                "is_llm_generated": True,
+                "weak_topics": weak_topics,
+                "attempt": attempt_number,
+                "questions": llm_questions
+            }), 200
+
+        # Fallback to database questions if Groq is unavailable
         total_questions = db.aptitude.count_documents({})
-        if total_questions == 0:
-            # Fallback to Groq dynamic generation with default topics if DB is empty
-            fallback_questions = generate_groq_questions(["Profit and Loss", "Percentages", "Time and Work"], count=count)
-            if fallback_questions:
-                return jsonify({
-                    "is_llm_generated": True,
-                    "weak_topics": ["Profit and Loss", "Percentages", "Time and Work"],
-                    "questions": fallback_questions
-                }), 200
-            return jsonify({"error": "No questions available in the aptitude collection"}), 404
+        if total_questions > 0:
+            num_questions = min(count, total_questions)
+            pipeline = [{"$sample": {"size": num_questions}}]
+            questions = list(db.aptitude.aggregate(pipeline))
+            for idx, question in enumerate(questions):
+                question['_id'] = str(question['_id'])
+                if 'topic' not in question or not question['topic']:
+                    question['topic'] = STANDARD_15_TOPICS[idx % len(STANDARD_15_TOPICS)]
+            return jsonify({
+                "is_llm_generated": False,
+                "weak_topics": weak_topics,
+                "attempt": attempt_number,
+                "questions": questions
+            }), 200
 
-        num_questions = min(count, total_questions)
-        pipeline = [{"$sample": {"size": num_questions}}]
-        questions = list(db.aptitude.aggregate(pipeline))
-
-        default_topics = ["Profit and Loss", "Percentages", "Time and Work", "Algebra", "Ratio and Proportion"]
-        for idx, question in enumerate(questions):
-            question['_id'] = str(question['_id'])
-            if 'topic' not in question or not question['topic']:
-                question['topic'] = default_topics[idx % len(default_topics)]
-
-        return jsonify({
-            "is_llm_generated": False,
-            "questions": questions
-        }), 200
+        return jsonify({"error": "No questions available in the aptitude collection"}), 404
     except Exception as e:
         app.logger.error(f"Get random questions error: {e}")
         return jsonify({"error": "An internal server error occurred"}), 500
@@ -732,7 +820,7 @@ def get_random_questions():
 # --- New Results Endpoint ---
 @app.route('/api/submit-results', methods=['POST'])
 def submit_results():
-    """Stores quiz results for a candidate, including topic breakdown and weak topics."""
+    """Stores quiz results for a candidate, including complete topic breakdown and all active weak topics."""
     try:
         data = request.get_json()
         candidate_data = data.get("candidate")
@@ -749,7 +837,7 @@ def submit_results():
         if score is None or percentage is None or total_questions is None:
             return jsonify({"error": "Missing required fields: score, percentage, or total_questions"}), 400
 
-        # Calculate topic breakdown and top 2 weak topics
+        # Calculate topic breakdown and active weak topics
         topic_breakdown = {}
         weak_topics = []
 
@@ -765,7 +853,7 @@ def submit_results():
                 else:
                     topic_breakdown[topic]["marks_lost"] += 1
 
-            # Identify topics where student lost marks and rank by highest marks lost / lowest accuracy
+            # Identify ALL topics where student lost marks and rank by highest marks lost / lowest accuracy
             weak_candidates = []
             for topic, stats in topic_breakdown.items():
                 if stats["marks_lost"] > 0:
@@ -779,8 +867,12 @@ def submit_results():
             # Sort by marks_lost descending, accuracy ascending
             weak_candidates.sort(key=lambda x: (-x["marks_lost"], x["accuracy"]))
 
-            # Select strictly the TOP 2 weakest topics
-            weak_topics = [item["topic"] for item in weak_candidates[:2]]
+            # Full marks check (Mastery): if 100% or score == total_questions, weak_topics = []
+            if int(score) >= int(total_questions) or float(percentage) >= 100.0:
+                weak_topics = []
+            else:
+                # Capture ALL topics where candidate lost marks (do NOT cap to 2!)
+                weak_topics = [item["topic"] for item in weak_candidates]
 
         email = candidate_data["email"]
         attempt_number = db.quiz_results.count_documents({"email": email, "round": int(round_number)}) + 1
@@ -807,12 +899,12 @@ def submit_results():
         result = db.quiz_results.insert_one(quiz_result)
         quiz_result['_id'] = str(result.inserted_id)
 
-        # Update candidate's weakTopics in db.students collection
-        if weak_topics:
-            db.students.update_one(
-                {"email": email},
-                {"$addToSet": {"weakTopics": {"$each": weak_topics}}}
-            )
+        # Update candidate's current active weakTopics in db.students collection
+        # Uses $set to overwrite with current attempt's active weak topics (or [] if mastered)
+        db.students.update_one(
+            {"email": email},
+            {"$set": {"weakTopics": weak_topics}}
+        )
 
         return jsonify({
             "message": "Quiz results stored successfully",

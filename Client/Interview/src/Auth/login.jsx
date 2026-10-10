@@ -62,6 +62,7 @@ function StudentLogin() {
         faceDescriptor: res.data.student.faceDescriptor || [],
         hasFaceRegistered: res.data.student.hasFaceRegistered,
         idCardPhoto: res.data.student.idCardPhoto || '',
+        picture: res.data.student.idCardPhoto || res.data.student.picture || '',
         token: res.data.token
       };
       localStorage.setItem("candidate", JSON.stringify(candidateData));

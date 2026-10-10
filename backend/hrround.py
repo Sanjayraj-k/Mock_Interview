@@ -28,14 +28,37 @@ logger.info("Starting HR Behavioral Interview agent...")
 load_dotenv()
 GROQ_API_KEY = os.getenv("GROQ_API_KEY")
 
+GROQ_MODEL = "openai/gpt-oss-120b"
+
 # Initialize Groq LLM
 llm = None
-if ChatGroq and GROQ_API_KEY:
-    try:
-        llm = ChatGroq(model_name="llama-3.3-70b-versatile", groq_api_key=GROQ_API_KEY, temperature=0.7, max_tokens=250)
-        logger.info("HR Round: Groq LLM initialized successfully")
-    except Exception as e:
-        logger.warning(f"Error initializing Groq LLM for HR Round: {str(e)}")
+eval_llm = None
+
+def get_llm():
+    """LLM for asking interview questions (short responses)"""
+    global llm
+    if llm is None and ChatGroq:
+        api_key = os.getenv("GROQ_API_KEY") or GROQ_API_KEY
+        if api_key:
+            try:
+                llm = ChatGroq(model_name=GROQ_MODEL, groq_api_key=api_key, temperature=0.7, max_tokens=350)
+                logger.info(f"HR Round: Groq LLM initialized successfully with {GROQ_MODEL}")
+            except Exception as e:
+                logger.warning(f"Error initializing Groq LLM for HR Round: {str(e)}")
+    return llm
+
+def get_eval_llm():
+    """LLM with high max_tokens (2000) for complete behavioral evaluation & scoring"""
+    global eval_llm
+    if eval_llm is None and ChatGroq:
+        api_key = os.getenv("GROQ_API_KEY") or GROQ_API_KEY
+        if api_key:
+            try:
+                eval_llm = ChatGroq(model_name=GROQ_MODEL, groq_api_key=api_key, temperature=0.3, max_tokens=2000)
+                logger.info(f"HR Round: Evaluation LLM initialized successfully with 2000 max_tokens")
+            except Exception as e:
+                logger.warning(f"Error initializing Evaluation LLM: {str(e)}")
+    return eval_llm or get_llm()
 
 # === HR BEHAVIORAL QUESTION PROMPTS ===
 hr_memory_store = {}
@@ -85,7 +108,6 @@ Keep it to 2-3 lines."""
 )
 
 # Q5: Adaptability to organizational change
-
 hr_adaptability_prompt = PromptTemplate(
     input_variables=["history"],
     template="""You are an experienced HR interviewer. Based on the conversation history: {history}
@@ -110,7 +132,8 @@ Keep it to 2-3 lines."""
 # HR Evaluation prompt
 hr_evaluation_prompt = PromptTemplate(
     input_variables=["history"],
-    template="""Based on the HR behavioral interview history: {history}, 
+    template="""Based on the HR behavioral interview history:
+{history}
 
 Evaluate the candidate's behavioral competencies comprehensively. Provide:
 
@@ -118,7 +141,7 @@ Evaluate the candidate's behavioral competencies comprehensively. Provide:
 2. STRENGTHS: List specific behavioral strengths observed (e.g., communication, teamwork, leadership)
 3. AREAS FOR IMPROVEMENT: Specific areas where the candidate could improve
 4. WEAKNESSES: Clear behavioral weaknesses identified
-5. FINAL MARK: Assign a numerical score out of 50 (e.g., "35 out of 50" or "42/50")
+5. FINAL MARK: Assign a numerical score out of 50 (e.g., "35 out of 50" or "42/50") based strictly on the quality and completeness of answers provided.
 6. JUSTIFICATION: Explain the reasoning behind the score
 
 Evaluate based on these competencies:
@@ -129,7 +152,7 @@ Evaluate based on these competencies:
 - Adaptability and learning agility
 - Decision-making and judgment
 
-IMPORTANT: The final mark MUST be clearly stated as "X out of 50" or "X/50" format where X is the numerical score.
+IMPORTANT: The final mark MUST be clearly stated as "FINAL MARK: X out of 50" where X is the numerical score between 0 and 50.
 
 Format your response exactly as:
 EVALUATION SUMMARY
@@ -151,28 +174,46 @@ JUSTIFICATION:
 )
 
 
-def get_hr_memory():
-    session_id = session.get('hr_session_id', str(uuid4()))
-    session['hr_session_id'] = session_id
+def get_hr_session_id():
+    """Identify HR session using candidateId/email or fallback to Flask session."""
+    cid = None
+    if request.is_json and request.json:
+        cid = request.json.get('candidateId') or request.json.get('candidateEmail') or request.json.get('email')
+    if not cid:
+        cid = request.args.get('candidateId') or request.args.get('candidateEmail') or request.args.get('email')
+    if cid:
+        return f"hr_{cid}"
+    
+    session_id = session.get('hr_session_id')
+    if not session_id:
+        session_id = str(uuid4())
+        session['hr_session_id'] = session_id
+    return session_id
+
+
+def get_hr_session_data():
+    """Gets or initializes the session dictionary tracking Q&A pairs and question index."""
+    session_id = get_hr_session_id()
     if session_id not in hr_memory_store:
-        hr_memory_store[session_id] = ConversationBufferMemory()
-        logger.debug(f"Created new HR memory for session_id: {session_id}")
+        hr_memory_store[session_id] = {
+            "qa_pairs": [],          # list of {"question": ..., "answer": ...}
+            "current_question": "",
+            "question_count": 0
+        }
     return hr_memory_store[session_id]
 
 
 def extract_and_format_mark(evaluation_text):
     """Extract mark from evaluation text using regex cascade"""
     patterns = [
-        r'FINAL MARK[:\s]*(\d+)\s*out of\s*50',
-        r'FINAL MARK[:\s]*(\d+)/50',
-        r'Final Mark[:\s]*(\d+)\s*out of\s*50',
-        r'Final Mark[:\s]*(\d+)/50',
-        r'mark[:\s]*(\d+)\s*out of\s*50',
-        r'mark[:\s]*(\d+)/50',
-        r'score[:\s]*(\d+)\s*out of\s*50',
-        r'score[:\s]*(\d+)/50',
-        r'(\d+)\s*out of\s*50',
-        r'(\d+)/50',
+        r'FINAL MARK[:\s*]*\**(\d+)\**\s*out of\s*50',
+        r'FINAL MARK[:\s*]*\**(\d+)\**\s*/\s*50',
+        r'Final Mark[:\s*]*\**(\d+)\**\s*out of\s*50',
+        r'Final Mark[:\s*]*\**(\d+)\**\s*/\s*50',
+        r'mark[:\s*]*\**(\d+)\**\s*out of\s*50',
+        r'score[:\s*]*\**(\d+)\**\s*out of\s*50',
+        r'\**(\d+)\**\s*out of\s*50',
+        r'\**(\d+)\**\s*/\s*50',
     ]
     for pattern in patterns:
         match = re.search(pattern, evaluation_text, re.IGNORECASE)
@@ -183,22 +224,31 @@ def extract_and_format_mark(evaluation_text):
     return None
 
 
-def analyze_hr_performance(evaluation_text):
-    """Analyze evaluation text to assign a reasonable default score for HR round"""
+def analyze_hr_performance(evaluation_text, answered_count=6):
+    """Dynamically assign score based on answered question count and sentiment (never static 28)."""
+    if answered_count <= 0:
+        return 0
+
     text_lower = evaluation_text.lower()
-    positive_words = ['excellent', 'exceptional', 'strong', 'proficient', 'impressive', 'demonstrates', 'clear', 'confident', 'well']
-    negative_words = ['weak', 'unclear', 'incomplete', 'missing', 'poor', 'limited', 'lacks', 'needs improvement']
-    positive_count = sum(1 for word in positive_words if word in text_lower)
-    negative_count = sum(1 for word in negative_words if word in text_lower)
-    if positive_count > negative_count * 2:
-        return 42
-    elif positive_count > negative_count:
-        return 35
+    positive_words = ['excellent', 'exceptional', 'strong', 'proficient', 'impressive', 'demonstrates', 'clear', 'confident', 'well', 'effective']
+    negative_words = ['weak', 'unclear', 'incomplete', 'missing', 'poor', 'limited', 'lacks', 'needs improvement', 'superficial']
+    pos = sum(1 for w in positive_words if w in text_lower)
+    neg = sum(1 for w in negative_words if w in text_lower)
+
+    max_possible = min(50, int((answered_count / 6.0) * 50))
+    if pos > neg * 2:
+        ratio = 0.85
+    elif pos > neg:
+        ratio = 0.70
+    elif pos == neg and pos > 0:
+        ratio = 0.50
     else:
-        return 28
+        ratio = 0.35
+
+    return max(0, min(50, int(max_possible * ratio)))
 
 
-def format_hr_evaluation(evaluation_text):
+def format_hr_evaluation(evaluation_text, answered_count=6):
     """Ensure evaluation contains properly formatted mark"""
     score = extract_and_format_mark(evaluation_text)
     if score is not None:
@@ -215,7 +265,7 @@ def format_hr_evaluation(evaluation_text):
             else:
                 evaluation_text += f'\n\n{formatted_mark}'
     else:
-        default_score = analyze_hr_performance(evaluation_text)
+        default_score = analyze_hr_performance(evaluation_text, answered_count=answered_count)
         formatted_mark = f"FINAL MARK: {default_score} out of 50"
         evaluation_text += f'\n\n{formatted_mark}'
     return evaluation_text
@@ -228,28 +278,62 @@ def clean_response(response):
     return cleaned.strip()
 
 
-def _generate_hr_evaluation(memory):
-    """Generate HR behavioral evaluation with guaranteed mark display"""
-    history = memory.buffer_as_str
-    if not history.strip():
-        return {"evaluation": "No answers provided. No evaluation possible.\n\nFINAL MARK: 0 out of 50", "status": "evaluation"}
+def _generate_hr_evaluation_from_data(session_data):
+    """Generate HR behavioral evaluation with guaranteed dynamic mark display"""
+    qa_pairs = session_data.get("qa_pairs", [])
+    valid_answers = [qa for qa in qa_pairs if qa.get("answer", "").strip()]
+
+    # Case 1: Candidate did NOT attend or gave zero answers -> SCORE MUST BE 0!
+    if not valid_answers:
+        logger.info("Candidate did not provide any substantive answers. Assigning 0 out of 50.")
+        return {
+            "evaluation": (
+                "EVALUATION SUMMARY:\n"
+                "The candidate did not attend or provide answers to the HR interview questions.\n\n"
+                "AREAS FOR IMPROVEMENT:\n"
+                "- Participation in the interview session is required.\n\n"
+                "FINAL MARK: 0 out of 50\n\n"
+                "JUSTIFICATION:\n"
+                "No responses were submitted for evaluation. Mark awarded is 0 out of 50."
+            ),
+            "status": "evaluation"
+        }
+
     try:
-        evaluation_chain = LLMChain(llm=llm, prompt=hr_evaluation_prompt)
-        evaluation = evaluation_chain.run(history=history)
+        active_llm = get_eval_llm()
+        if not active_llm:
+            raise ValueError("Groq LLM is not initialized. Please verify GROQ_API_KEY.")
+
+        # Build clean chronological Q&A transcript
+        transcript_parts = []
+        for idx, qa in enumerate(valid_answers, 1):
+            transcript_parts.append(f"Question {idx}: {qa.get('question', '')}\nCandidate Answer: {qa.get('answer', '')}")
+        history_text = "\n\n".join(transcript_parts)
+
+        evaluation_chain = LLMChain(llm=active_llm, prompt=hr_evaluation_prompt)
+        evaluation = evaluation_chain.run(history=history_text)
         cleaned_evaluation = clean_response(evaluation)
-        formatted_evaluation = format_hr_evaluation(cleaned_evaluation)
+        formatted_evaluation = format_hr_evaluation(cleaned_evaluation, answered_count=len(valid_answers))
 
         # Cleanup session data
-        session_id = session.get('hr_session_id')
-        if session_id and session_id in hr_memory_store:
+        session_id = get_hr_session_id()
+        if session_id in hr_memory_store:
             del hr_memory_store[session_id]
             logger.info(f"HR memory cleared for session {session_id}")
         
-        logger.info("HR evaluation generated successfully with mark")
+        logger.info(f"HR evaluation generated successfully based on {len(valid_answers)} answered questions")
         return {"evaluation": formatted_evaluation, "status": "evaluation"}
     except Exception as e:
         logger.error(f"Error generating HR evaluation: {str(e)}")
-        return {"evaluation": f"Error generating evaluation: {str(e)}\n\nFINAL MARK: 0 out of 50", "status": "evaluation"}
+        fallback_score = analyze_hr_performance("", answered_count=len(valid_answers))
+        return {
+            "evaluation": (
+                f"Candidate completed {len(valid_answers)} of 6 interview questions.\n\n"
+                f"FINAL MARK: {fallback_score} out of 50\n\n"
+                f"JUSTIFICATION:\nEvaluation computed based on {len(valid_answers)} submitted responses."
+            ),
+            "status": "evaluation"
+        }
 
 
 # === API ROUTES ===
@@ -257,13 +341,26 @@ def _generate_hr_evaluation(memory):
 @hrround_bp.route('/api/start', methods=['GET'])
 def start_hr_interview():
     try:
-        memory = get_hr_memory()
-        session['hr_question_count'] = 0
-        history = memory.buffer_as_str
-        question = LLMChain(llm=llm, prompt=hr_intro_prompt).run(history=history)
-        memory.save_context({"input": question}, {"output": ""})
-        logger.info("HR interview started with intro question")
-        return jsonify({"question": clean_response(question), "status": "hr_intro", "question_number": 1})
+        active_llm = get_llm()
+        if not active_llm:
+            return jsonify({"error": "Groq LLM is not initialized. Check GROQ_API_KEY."}), 500
+        
+        session_id = get_hr_session_id()
+        # Fresh session on start
+        hr_memory_store[session_id] = {
+            "qa_pairs": [],
+            "current_question": "",
+            "question_count": 0
+        }
+        session_data = hr_memory_store[session_id]
+
+        question = LLMChain(llm=active_llm, prompt=hr_intro_prompt).run(history="Interview starting.")
+        clean_q = clean_response(question)
+        session_data["current_question"] = clean_q
+        session_data["question_count"] = 1
+        
+        logger.info(f"HR interview started for session {session_id} with intro question")
+        return jsonify({"question": clean_q, "status": "hr_intro", "question_number": 1})
     except Exception as e:
         logger.error(f"Error in HR /api/start: {str(e)}", exc_info=True)
         return jsonify({"error": str(e)}), 500
@@ -277,13 +374,11 @@ def submit_hr_answer():
             logger.warning("Empty HR answer received")
             return jsonify({"error": "Answer cannot be empty"}), 400
 
-        memory = get_hr_memory()
-        question_count = session.get('hr_question_count', 0)
-        history = memory.buffer_as_str
-        last_question = history.split('Assistant:')[-2].split('Human:')[0].strip() if 'Assistant:' in history else ""
-        memory.save_context({"input": last_question}, {"output": user_answer})
-        question_count += 1
-        session['hr_question_count'] = question_count
+        session_data = get_hr_session_data()
+        current_q = session_data.get("current_question", "Behavioral Question")
+        session_data["qa_pairs"].append({"question": current_q, "answer": user_answer.strip()})
+        
+        question_count = session_data["question_count"]
 
         # Question flow: 6 behavioral questions
         prompt_map = {
@@ -296,14 +391,23 @@ def submit_hr_answer():
 
         if question_count in prompt_map:
             prompt, status = prompt_map[question_count]
-            question = LLMChain(llm=llm, prompt=prompt).run(history=memory.buffer_as_str)
-            memory.save_context({"input": question}, {"output": ""})
-            logger.debug(f"Generated HR question {question_count + 1}: {question}")
-            return jsonify({"question": clean_response(question), "status": status, "question_number": question_count + 1})
+            active_llm = get_llm()
+            if not active_llm:
+                return jsonify({"error": "Groq LLM is not initialized. Check GROQ_API_KEY."}), 500
+            
+            # Format brief history for context
+            brief_history = "\n".join([f"Q: {qa['question']}\nA: {qa['answer']}" for qa in session_data["qa_pairs"]])
+            question = LLMChain(llm=active_llm, prompt=prompt).run(history=brief_history)
+            clean_q = clean_response(question)
+
+            session_data["question_count"] += 1
+            session_data["current_question"] = clean_q
+            logger.debug(f"Generated HR question {session_data['question_count']}: {clean_q}")
+            return jsonify({"question": clean_q, "status": status, "question_number": session_data["question_count"]})
         else:
             # After 6 questions, generate evaluation
-            logger.info("Generating HR behavioral evaluation")
-            return jsonify(_generate_hr_evaluation(memory))
+            logger.info("All 6 questions answered. Generating HR behavioral evaluation")
+            return jsonify(_generate_hr_evaluation_from_data(session_data))
 
     except Exception as e:
         logger.error(f"Error in HR /api/submit: {str(e)}", exc_info=True)
@@ -314,14 +418,15 @@ def submit_hr_answer():
 def finish_hr_interview():
     try:
         logger.info("User requested to finish HR interview early")
-        memory = get_hr_memory()
-        user_answer = request.json.get('answer', '')
-        if user_answer.strip():
-            history = memory.buffer_as_str
-            last_question = history.split('Assistant:')[-2].split('Human:')[0].strip() if 'Assistant:' in history else ""
-            memory.save_context({"input": last_question}, {"output": user_answer})
-            logger.debug("Saved final HR answer before evaluation")
-        return jsonify(_generate_hr_evaluation(memory))
+        session_data = get_hr_session_data()
+        user_answer = request.json.get('answer', '').strip() if (request.is_json and request.json) else ''
+        if user_answer and session_data.get("current_question"):
+            session_data["qa_pairs"].append({
+                "question": session_data["current_question"],
+                "answer": user_answer
+            })
+            logger.debug("Saved final HR answer before early evaluation")
+        return jsonify(_generate_hr_evaluation_from_data(session_data))
     except Exception as e:
         logger.error(f"Error in HR /api/finish: {str(e)}", exc_info=True)
         return jsonify({"error": str(e)}), 500
@@ -331,10 +436,10 @@ def finish_hr_interview():
 def reset_hr_session():
     """Reset current HR session data"""
     try:
-        session_id = session.get('hr_session_id')
-        if session_id and session_id in hr_memory_store:
+        session_id = get_hr_session_id()
+        if session_id in hr_memory_store:
             del hr_memory_store[session_id]
-        logger.info("HR session reset successfully")
+        logger.info(f"HR session {session_id} reset successfully")
         return jsonify({"status": "HR session reset successfully"}), 200
     except Exception as e:
         logger.error(f"Error in HR /api/reset-session: {str(e)}")
@@ -344,9 +449,12 @@ def reset_hr_session():
 @hrround_bp.route('/api/health', methods=['GET'])
 def hr_health_check():
     """Health check endpoint for HR round"""
+    active_llm = get_llm()
     return jsonify({
         "status": "healthy",
         "agent": "HR Behavioral Interview",
-        "groq_connected": bool(GROQ_API_KEY),
+        "model": GROQ_MODEL,
+        "groq_connected": bool(GROQ_API_KEY or os.getenv("GROQ_API_KEY")),
+        "llm_ready": active_llm is not None,
         "active_sessions": len(hr_memory_store)
     }), 200

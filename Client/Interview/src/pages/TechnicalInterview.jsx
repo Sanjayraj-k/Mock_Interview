@@ -4,7 +4,8 @@ import {
   Upload, CheckCircle, AlertCircle, Send,
   Mic, MicOff, Volume2, Pause, Play,
   Star, Clock, BookOpen, XCircle,
-  Award, Flag, Shield, Zap, Camera
+  Award, Flag, Shield, Zap, Camera,
+  Smartphone, Users, UserCheck, UserX, AlertTriangle
 } from 'lucide-react';
 
 const API       = 'http://localhost:5000/api/v2';
@@ -23,15 +24,26 @@ const ScoreBadge = ({ score, max = 10 }) => {
 };
 
 // ═══════════════════════════════════════════════════════════════
-// Proctoring WebCam — identical to Interview.jsx
+// Proctoring WebCam — Multi-person & Gadget Detection
 // ═══════════════════════════════════════════════════════════════
 const WebCam = () => {
   const [isActive, setIsActive]   = useState(false);
   const [error,    setError]      = useState(null);
   const [data,     setData]       = useState({
-    face_detected: false, looking_at_screen: false,
-    warnings: 0, max_warnings: 3, violation_detected: false,
-    look_direction: 'Unknown', eyes_closed: false, long_blink_count: 0,
+    face_detected: false,
+    face_count: 0,
+    multiple_faces_detected: false,
+    gadget_detected: false,
+    gadget_name: '',
+    looking_at_screen: false,
+    warnings: 0,
+    max_warnings: 3,
+    violation_detected: false,
+    violation_reason: '',
+    look_direction: 'Unknown',
+    eyes_closed: false,
+    long_blink_count: 0,
+    status_message: 'Initializing AI Proctor...'
   });
   const videoRef    = useRef(null);
   const canvasRef   = useRef(null);
@@ -67,63 +79,166 @@ const WebCam = () => {
 
   const sendFrame = async (img) => {
     try {
+      const sid = localStorage.getItem('ti_session_id') || '';
       const res = await fetch(`${PROCTOR}/process-frame`, {
         method: 'POST', credentials: 'include',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ image: img.split(',')[1] }),
+        headers: {
+          'Content-Type': 'application/json',
+          ...(sid ? { 'X-Session-ID': sid } : {})
+        },
+        body: JSON.stringify({ image: img.split(',')[1], session_id: sid }),
       });
-      if (res.ok) { const json = await res.json(); setData(prev => ({ ...prev, ...json })); }
+      if (res.ok) {
+        const json = await res.json();
+        setData(prev => ({ ...prev, ...json }));
+      }
     } catch {}
   };
 
   useEffect(() => { start(); return stop; }, []);
 
+  const hasHighAlert = data.violation_detected || data.multiple_faces_detected || data.gadget_detected;
+
   const statusIcon = () => {
-    if (data.violation_detected)  return <AlertCircle size={20} className="text-red-400" />;
-    if (!data.face_detected)      return <AlertCircle size={20} className="text-amber-400" />;
-    if (data.looking_at_screen)   return <CheckCircle size={20} className="text-emerald-400" />;
-    return <AlertCircle size={20} className="text-amber-400" />;
+    if (hasHighAlert)             return <AlertCircle size={20} className="text-red-500 animate-pulse" />;
+    if (!data.face_detected)      return <AlertTriangle size={20} className="text-amber-500" />;
+    if (data.looking_at_screen)   return <CheckCircle size={20} className="text-emerald-500" />;
+    return <AlertTriangle size={20} className="text-amber-500" />;
   };
 
   return (
     <div className="w-full max-w-lg mx-auto">
       <div className="bg-white/80 backdrop-blur-sm border border-gray-200/50 rounded-2xl p-6 shadow-xl">
-        <div className="flex items-center justify-between mb-6">
+        <div className="flex items-center justify-between mb-4">
           <h2 className="text-xl font-bold bg-gradient-to-r from-indigo-900 to-purple-900 bg-clip-text text-transparent">Proctoring Monitor</h2>
-          <div className="flex items-center gap-2"><Shield className="w-5 h-5 text-indigo-600"/><span className="text-sm font-medium text-gray-600">AI Protected</span></div>
+          <div className="flex items-center gap-2"><Shield className="w-5 h-5 text-indigo-600"/><span className="text-sm font-medium text-gray-600">AI Guard 2.0</span></div>
         </div>
+
         {error && <div className="mb-4 p-3 bg-red-50 border border-red-200 rounded-xl text-red-700 text-sm flex items-center gap-2"><AlertCircle className="w-4 h-4"/>{error}</div>}
+
+        {/* Real-time warning alert banner */}
+        {hasHighAlert && (
+          <div className="mb-4 p-3 bg-red-100 border-2 border-red-400 rounded-xl text-red-800 text-xs font-semibold flex items-center gap-2 shadow-sm animate-pulse">
+            <AlertCircle className="w-5 h-5 flex-shrink-0 text-red-600" />
+            <div>
+              {data.gadget_detected && <p className="font-bold text-red-900">PROHIBITED GADGET: {data.gadget_name || 'Device'} detected! Remove immediately.</p>}
+              {data.multiple_faces_detected && <p className="font-bold text-red-900">MULTIPLE PEOPLE: Only 1 person allowed to attend the test!</p>}
+              {data.violation_detected && <p className="text-red-700">VIOLATION: {data.violation_reason || 'Max warnings reached'}</p>}
+            </div>
+          </div>
+        )}
+
         <div className="space-y-4">
           <div className="relative">
-            <div className={`relative aspect-video bg-gray-900 rounded-xl overflow-hidden ${data.violation_detected ? 'ring-4 ring-red-400/50' : 'ring-2 ring-indigo-200/30'}`}>
+            <div className={`relative aspect-video bg-gray-900 rounded-xl overflow-hidden ${
+              hasHighAlert ? 'ring-4 ring-red-500/80 animate-pulse' : 'ring-2 ring-indigo-200/30'
+            }`}>
               <video ref={videoRef} className="w-full h-full object-cover" autoPlay playsInline muted />
-              {data.violation_detected && (
-                <div className="absolute inset-0 bg-gradient-to-t from-red-600/60 to-transparent flex items-center justify-center">
-                  <div className="text-center"><AlertCircle className="w-12 h-12 text-white mx-auto mb-2 animate-pulse"/><p className="text-white font-bold text-lg">VIOLATION DETECTED</p></div>
+
+              {/* Dynamic Camera Overlays */}
+              {data.gadget_detected && (
+                <div className="absolute inset-0 bg-red-900/75 backdrop-blur-xs flex items-center justify-center p-4">
+                  <div className="text-center">
+                    <Smartphone className="w-14 h-14 text-white mx-auto mb-2 animate-bounce" />
+                    <p className="text-white font-black text-lg tracking-wider uppercase">UNAUTHORIZED GADGET DETECTED</p>
+                    <p className="text-red-200 text-xs mt-1 font-semibold">{data.gadget_name || 'Mobile Phone'} in Camera View</p>
+                    <span className="mt-2 inline-block px-3 py-1 bg-red-600 text-white rounded-full text-xs font-bold shadow">Remove device immediately</span>
+                  </div>
                 </div>
               )}
+
+              {!data.gadget_detected && data.multiple_faces_detected && (
+                <div className="absolute inset-0 bg-red-900/75 backdrop-blur-xs flex items-center justify-center p-4">
+                  <div className="text-center">
+                    <Users className="w-14 h-14 text-white mx-auto mb-2 animate-pulse" />
+                    <p className="text-white font-black text-lg tracking-wider uppercase">MULTIPLE PEOPLE DETECTED ({data.face_count})</p>
+                    <p className="text-red-200 text-xs mt-1 font-semibold">Only 1 candidate allowed to attend the test</p>
+                    <span className="mt-2 inline-block px-3 py-1 bg-red-600 text-white rounded-full text-xs font-bold shadow">Candidate must be alone</span>
+                  </div>
+                </div>
+              )}
+
+              {!data.gadget_detected && !data.multiple_faces_detected && data.violation_detected && (
+                <div className="absolute inset-0 bg-red-900/80 flex items-center justify-center p-4">
+                  <div className="text-center">
+                    <AlertCircle className="w-12 h-12 text-white mx-auto mb-2 animate-bounce"/>
+                    <p className="text-white font-bold text-lg">PROCTORING VIOLATION</p>
+                    <p className="text-red-200 text-xs mt-1">{data.violation_reason || 'Excessive warnings recorded'}</p>
+                  </div>
+                </div>
+              )}
+
               {!isActive && !error && (
                 <div className="absolute inset-0 bg-gradient-to-br from-indigo-900/80 to-purple-900/80 flex items-center justify-center">
-                  <div className="text-center"><Camera size={48} className="text-white/70 mx-auto mb-3"/><p className="text-white/90 font-medium">Initializing AI Monitor...</p></div>
+                  <div className="text-center"><Camera size={48} className="text-white/70 mx-auto mb-3"/><p className="text-white/90 font-medium">Initializing AI Proctor...</p></div>
                 </div>
               )}
             </div>
             <canvas ref={canvasRef} className="hidden" />
           </div>
+
           <div className="bg-gradient-to-r from-gray-50 to-white rounded-xl p-4 border border-gray-100">
             <div className="flex items-center justify-between mb-4">
               <h3 className="font-semibold text-gray-900 flex items-center gap-2">{statusIcon()}<span>Security Status</span></h3>
-              <div className={`px-3 py-1 rounded-full text-xs font-medium ${data.violation_detected ? 'bg-red-100 text-red-700' : data.looking_at_screen ? 'bg-emerald-100 text-emerald-700' : 'bg-amber-100 text-amber-700'}`}>
-                {data.violation_detected ? 'Alert' : data.looking_at_screen ? 'Secure' : 'Monitor'}
+              <div className={`px-3 py-1 rounded-full text-xs font-bold ${
+                data.violation_detected ? 'bg-red-100 text-red-700'
+                : data.multiple_faces_detected || data.gadget_detected ? 'bg-red-100 text-red-700'
+                : data.looking_at_screen ? 'bg-emerald-100 text-emerald-700'
+                : 'bg-amber-100 text-amber-700'
+              }`}>
+                {data.violation_detected ? 'Violation' : data.gadget_detected ? 'Gadget Alert' : data.multiple_faces_detected ? 'Multi-User Alert' : data.looking_at_screen ? 'Secure' : 'Warning'}
               </div>
             </div>
+
             <div className="grid grid-cols-2 gap-3 text-sm">
-              <div className="flex items-center justify-between p-3 bg-white rounded-lg border border-gray-100"><span className="text-gray-600">Face Detected</span><div className={`w-2 h-2 rounded-full ${data.face_detected ? 'bg-emerald-400' : 'bg-red-400'}`}/></div>
-              <div className="flex items-center justify-between p-3 bg-white rounded-lg border border-gray-100"><span className="text-gray-600">Screen Focus</span><div className={`w-2 h-2 rounded-full ${data.looking_at_screen ? 'bg-emerald-400' : 'bg-amber-400'}`}/></div>
-              <div className="flex items-center justify-between p-3 bg-white rounded-lg border border-gray-100"><span className="text-gray-600">Warnings</span><span className={`font-medium ${data.warnings > 0 ? 'text-amber-600' : 'text-emerald-600'}`}>{data.warnings}/{data.max_warnings}</span></div>
-              <div className="flex items-center justify-between p-3 bg-white rounded-lg border border-gray-100"><span className="text-gray-600">Eye Closure</span><span className={`font-medium ${data.long_blink_count > 0 ? 'text-amber-600' : 'text-emerald-600'}`}>{data.long_blink_count}</span></div>
+              {/* 1 Person Verification */}
+              <div className={`flex items-center justify-between p-3 rounded-lg border ${
+                data.multiple_faces_detected ? 'bg-red-50 border-red-200'
+                : data.face_detected ? 'bg-white border-gray-100'
+                : 'bg-amber-50 border-amber-200'
+              }`}>
+                <div className="flex items-center gap-1.5">
+                  {data.multiple_faces_detected ? <Users size={15} className="text-red-600"/> : data.face_detected ? <UserCheck size={15} className="text-emerald-600"/> : <UserX size={15} className="text-amber-600"/>}
+                  <span className="text-gray-700 text-xs font-medium">Candidate</span>
+                </div>
+                <span className={`text-xs font-bold ${
+                  data.multiple_faces_detected ? 'text-red-600'
+                  : data.face_detected ? 'text-emerald-600'
+                  : 'text-amber-600'
+                }`}>
+                  {data.multiple_faces_detected ? `Multi (${data.face_count})` : data.face_detected ? '1 Person' : 'No Face'}
+                </span>
+              </div>
+
+              {/* Gadget Monitoring */}
+              <div className={`flex items-center justify-between p-3 rounded-lg border ${
+                data.gadget_detected ? 'bg-red-50 border-red-200' : 'bg-white border-gray-100'
+              }`}>
+                <div className="flex items-center gap-1.5">
+                  <Smartphone size={15} className={data.gadget_detected ? 'text-red-600' : 'text-gray-400'}/>
+                  <span className="text-gray-700 text-xs font-medium">Gadgets</span>
+                </div>
+                <span className={`text-xs font-bold ${data.gadget_detected ? 'text-red-600' : 'text-emerald-600'}`}>
+                  {data.gadget_detected ? data.gadget_name || 'Detected' : 'None'}
+                </span>
+              </div>
+
+              {/* Warnings Count */}
+              <div className="flex items-center justify-between p-3 bg-white rounded-lg border border-gray-100">
+                <span className="text-gray-600 text-xs font-medium">Warnings</span>
+                <span className={`text-xs font-bold ${data.warnings > 0 ? 'text-amber-600' : 'text-emerald-600'}`}>
+                  {data.warnings}/{data.max_warnings}
+                </span>
+              </div>
+
+              {/* Screen Focus */}
+              <div className="flex items-center justify-between p-3 bg-white rounded-lg border border-gray-100">
+                <span className="text-gray-600 text-xs font-medium">Gaze Focus</span>
+                <span className={`text-xs font-bold ${data.looking_at_screen ? 'text-emerald-600' : 'text-amber-600'}`}>
+                  {data.looking_at_screen ? 'Center' : data.look_direction || 'Away'}
+                </span>
+              </div>
             </div>
-            <div className="mt-3 p-3 bg-white rounded-lg border border-gray-100"><div className="flex items-center justify-between"><span className="text-gray-600 text-sm">Look Direction</span><span className="font-medium text-gray-900 text-sm">{data.look_direction}</span></div></div>
           </div>
         </div>
       </div>
@@ -163,7 +278,8 @@ const ResumeUploadPage = ({ onResumeReady }) => {
       const res = await fetch(`${API}/upload-resume`, { method: 'POST', credentials: 'include', headers, body });
       const d   = await res.json();
       if (!res.ok) throw new Error(d.error || 'Upload failed');
-      onResumeReady(d.candidate_name || 'Candidate');
+      if (d.session_id) localStorage.setItem('ti_session_id', d.session_id);
+      onResumeReady(d.candidate_name || 'Candidate', d.session_id);
     } catch (e) { setError(e.message); }
     finally { setUploading(false); }
   };
@@ -341,7 +457,11 @@ const InterviewPage = ({ candidateName, onComplete }) => {
   const startInterview = async () => {
     setError('');
     try {
-      const res = await fetch(`${API}/start`, { credentials: 'include' });
+      const sid = localStorage.getItem('ti_session_id') || '';
+      const res = await fetch(`${API}/start`, {
+        credentials: 'include',
+        headers: sid ? { 'X-Session-ID': sid } : {}
+      });
       if (!res.ok) throw new Error('Failed to start');
       const d = await res.json();
       setQuestion(d.question);
@@ -368,10 +488,14 @@ const InterviewPage = ({ candidateName, onComplete }) => {
     if (!ans) return alert('Please provide an answer before submitting.');
     setIsSubmitting(true); setError('');
     try {
+      const sid = localStorage.getItem('ti_session_id') || '';
       const res = await fetch(`${API}/answer`, {
         method: 'POST', credentials: 'include',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ answer: ans }),
+        headers: {
+          'Content-Type': 'application/json',
+          ...(sid ? { 'X-Session-ID': sid } : {})
+        },
+        body: JSON.stringify({ answer: ans, session_id: sid }),
       });
       const d = await res.json();
       if (!res.ok) throw new Error(d.error);
@@ -399,12 +523,16 @@ const InterviewPage = ({ candidateName, onComplete }) => {
     if (!window.confirm('Are you sure you want to finish the interview? Your progress will be evaluated.')) return;
     setIsFinishing(true); setError('');
     try {
+      const sid = localStorage.getItem('ti_session_id') || '';
       const ans = transcript.replace(/\[.*?\]\s*$/, '').trim();
       if (ans) {
         const res = await fetch(`${API}/answer`, {
           method: 'POST', credentials: 'include',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ answer: ans }),
+          headers: {
+            'Content-Type': 'application/json',
+            ...(sid ? { 'X-Session-ID': sid } : {})
+          },
+          body: JSON.stringify({ answer: ans, session_id: sid }),
         });
         const d = await res.json();
         if (d.status === 'complete') {

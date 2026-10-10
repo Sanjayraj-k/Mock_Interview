@@ -222,7 +222,12 @@ export default function HRInterviewDashboard() {
   const startInterview = async () => {
     try {
       setError('');
-      const response = await fetch(`${apiUrl}/start`, { method: 'GET', credentials: 'include' });
+      candidateData = getCandidateData();
+      const params = new URLSearchParams({
+        candidateId: candidateData.id || '',
+        email: candidateData.email || ''
+      });
+      const response = await fetch(`${apiUrl}/start?${params.toString()}`, { method: 'GET', credentials: 'include' });
       if (!response.ok) throw new Error(`Failed to start HR interview: ${response.statusText}`);
       const data = await response.json();
       setCurrentQuestion(data.question);
@@ -244,11 +249,16 @@ export default function HRInterviewDashboard() {
     setError('');
 
     try {
+      candidateData = getCandidateData();
       const response = await fetch(`${apiUrl}/submit`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         credentials: 'include',
-        body: JSON.stringify({ answer: finalTranscript }),
+        body: JSON.stringify({
+          answer: finalTranscript,
+          candidateId: candidateData.id || '',
+          email: candidateData.email || ''
+        }),
       });
       if (!response.ok) throw new Error(`Failed to submit answer: ${response.statusText}`);
       const data = await response.json();
@@ -278,11 +288,16 @@ export default function HRInterviewDashboard() {
     setIsFinishing(true);
     setError('');
     try {
+      candidateData = getCandidateData();
       const response = await fetch(`${apiUrl}/finish`, {
         method: 'POST',
         credentials: 'include',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ answer: transcript.trim() })
+        body: JSON.stringify({
+          answer: transcript.trim(),
+          candidateId: candidateData.id || '',
+          email: candidateData.email || ''
+        })
       });
       if (!response.ok) throw new Error(`Failed to finish HR interview: ${response.statusText}`);
       const data = await response.json();

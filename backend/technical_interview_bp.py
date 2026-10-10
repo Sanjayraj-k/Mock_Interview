@@ -29,6 +29,7 @@ from technical_interview_agent import (
     _init_interview_state,
     _extract_text_from_pdf,
     _extract_text_from_docx,
+    session_store,
     PDF_AVAILABLE,
     DOCX_AVAILABLE,
     MAX_QUESTIONS,
@@ -37,17 +38,28 @@ from technical_interview_agent import (
 
 logger = logging.getLogger("TechInterview.Blueprint")
 
-# ── In-memory session store (shared with main module) ───────────────────────
-session_store: Dict[str, Dict[str, Any]] = {}
-
 tech_interview_bp = Blueprint("tech_interview", __name__, url_prefix="/api/v2")
 
 
 # ── Helpers ──────────────────────────────────────────────────────────────────
 def _get_session_id() -> str:
-    if "ti_session_id" not in session:
-        session["ti_session_id"] = str(uuid4())
-    return session["ti_session_id"]
+    # 1. Custom header
+    sid = request.headers.get("X-Session-ID")
+    # 2. Query parameter
+    if not sid:
+        sid = request.args.get("session_id")
+    # 3. JSON body
+    if not sid and request.is_json:
+        data = request.get_json(silent=True) or {}
+        sid = data.get("session_id")
+    # 4. Flask session cookie
+    if not sid:
+        sid = session.get("ti_session_id")
+    # 5. Generate new
+    if not sid:
+        sid = str(uuid4())
+        session["ti_session_id"] = sid
+    return sid
 
 
 def _get_state(sid: str):
@@ -122,14 +134,19 @@ def upload_resume():
         _save_state(sid, result)
 
         candidate_name = "Candidate"
+        projects = []
         try:
-            candidate_name = json.loads(result["resume_summary"]).get("candidate_name", "Candidate")
+            parsed_summary = json.loads(result.get("resume_summary", "{}"))
+            candidate_name = parsed_summary.get("candidate_name", "Candidate")
+            projects = [p.get("name") for p in parsed_summary.get("projects", []) if p.get("name")]
         except Exception:
             pass
 
         return jsonify({
             "status": "ready",
+            "session_id": sid,
             "candidate_name": candidate_name,
+            "projects": projects,
             "message": "Resume processed. Call /api/v2/start to begin.",
             "resume_length": len(resume_text),
         }), 200
@@ -163,6 +180,7 @@ def start_interview():
 
     return jsonify({
         "status": "interview_started",
+        "session_id": sid,
         "question": state["current_question"],
         "question_number": state["questions_asked"],
         "total_questions": MAX_QUESTIONS,

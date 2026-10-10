@@ -12,19 +12,19 @@ app.use(express.json());
 
 const languageConfigs = {
   c: {
-    image: "gcc:latest",
+    image: "frolvlad/alpine-gxx",
     extension: ".c",
     compile: ["gcc", "-o", "/code/temp", "/code/temp.c"],
     run: ["/code/temp"],
   },
   cpp: {
-    image: "gcc:latest",
+    image: "frolvlad/alpine-gxx",
     extension: ".cpp",
     compile: ["g++", "-o", "/code/temp", "/code/temp.cpp"],
     run: ["/code/temp"],
   },
   java: {
-    image: "openjdk:11",
+    image: "eclipse-temurin:11-jdk-alpine",
     extension: ".java",
     compile: ["javac", "/code/Solution.java"],
     run: ["java", "-cp", "/code", "Solution"],
