@@ -1,10 +1,12 @@
 import React, { useState, useEffect } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { Star, ArrowRight } from 'lucide-react';
 import teacher from '../images/teacher.png';
 
 import candidate from '../images/candidate.png';
 
 export default function LandingPage() {
+  const navigate = useNavigate();
   const [isLoading, setIsLoading] = useState(true);
 
   useEffect(() => {
@@ -80,7 +82,7 @@ export default function LandingPage() {
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-8 w-full max-w-5xl">
           {/* Faculty Portal Card */}
           <button
-            onClick={() => window.location.href = '/hr/login'}
+            onClick={() => navigate('/hr/login')}
             className="group relative bg-white/80 backdrop-blur-sm p-8 rounded-3xl shadow-xl hover:shadow-2xl transform hover:-translate-y-3 transition-all duration-700 border border-white/20 hover:border-purple-200/50 overflow-hidden w-full"
           >
             {/* Animated Background */}
@@ -122,7 +124,7 @@ export default function LandingPage() {
 
           {/* Candidate Portal Card */}
           <button
-            onClick={() => window.location.href = '/candidate/login'}
+            onClick={() => navigate('/candidate/login')}
             className="group relative bg-white/80 backdrop-blur-sm p-8 rounded-3xl shadow-xl hover:shadow-2xl transform hover:-translate-y-3 transition-all duration-700 border border-white/20 hover:border-orange-200/50 overflow-hidden w-full"
           >
             {/* Animated Background */}

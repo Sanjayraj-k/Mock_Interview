@@ -76,15 +76,21 @@ function App() {
               <Route index element={<Navigate to="/candidate/login" replace />} />
               <Route path="login" element={<StudentLogin />} />
             </Route>
-            <Route path="/student">
+            <Route path="/candidate-login" element={<Navigate to="/candidate/login" replace />} />
+            <Route path="/hr-login" element={<Navigate to="/hr/login" replace />} />
+            <Route path="/teacher" element={<Navigate to="/hr/login" replace />} />
+            <Route path="/teacher/login" element={<Navigate to="/hr/login" replace />} />
 
+            <Route path="/student">
               <Route path="landing" element={<StudentLandingpage />} />
               <Route path="questionBank" element={<QuestionBank />} />
+              <Route path="questionbank" element={<QuestionBank />} />
               <Route path="ats" element={<Ats />} />
               <Route path="questionforum" element={<QuestionForum />} />
               <Route path="upload" element={<Upload />} />
               <Route path="practicequiz" element={<PracticeQuiz />} />
               <Route path="Assistant" element={<Assistant />} />
+              <Route path="assistant" element={<Assistant />} />
               <Route path="domain" element={<Domain />} />
               <Route path="companyscrap" element={<CompanyProfileFetcher />} />
               <Route path="placement-paper" element={<PlacementPaperGenerator />} />
